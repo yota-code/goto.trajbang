@@ -1,0 +1,65 @@
+
+
+/*
+    font-family: 'Crimson Pro', serif;
+    font-family: 'Inconsolata', monospace;
+    font-family: 'Montserrat', sans-serif;
+	font-family: 'Roboto Condensed', sans-serif;	
+*/
+
+
+
+#main {
+	width:210mm;
+	margin-left: 1em;
+	background-color:white;
+	border:3px solid black;
+	padding: 1em 1em;
+
+}
+
+html {
+	font-family: 'Crimson Pro', serif;
+	background-color:gray;
+}
+
+h1, h2, h3, h4, h5, h6 {
+	font-family: 'Montserrat', sans-serif;
+}
+
+pre {
+	font-family: 'Inconsolata', monospace;
+}
+
+figure {
+	margin: auto auto;
+	text-align:center;
+}
+
+img {
+	max-width: 190mm;
+}
+
+.side_form {
+	position: fixed;
+	right: 1em;
+	top: 20%;
+	background-color: white;
+	border: 1px solid black;
+	padding:0.5em;
+	z-index: 999;
+	width: 15em;
+}
+
+table, tr, td, th {
+	border-collapse: collapse;
+}
+
+table {
+	width: 100%;
+}
+
+td, th {
+	border: 1px solid black;
+	padding: 0.15em 0.15em;
+}

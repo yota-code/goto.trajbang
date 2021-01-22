@@ -6,16 +6,25 @@ import sympy
 
 class TrajBang3() :
 
+	tolerance = 1e-6
+
 	def __init__(self, jm, am, a0, s0, sg) :
-		print(f"TrajBang3({jm}, {am}, {a0}, {s0}, {sg})")
-		self.jm, self.am, self.a0, self.s0, self.sg = jm, am, a0, s0, sg
+		self.jm, self.am, self.a0, self.s0, self.sg = abs(jm), abs(am), a0, s0, sg
+
+		if abs(self.am) < self.tolerance :
+			raise ValueError("Maximal acceleration can not be null")
+
+		if abs(self.jm) < self.tolerance :
+			raise ValueError("Maximal acceleration can not be null")
 
 	def check(self) :
 
-		def ok(e) :
+		jm, am, a0, s0, sg = self.jm, self.am, self.a0, self.s0, self.sg
+
+		def k(e) :
 				return "\x1b[32mOK\x1b[0m" if e else "\x1b[31mKO\x1b[0m"
 		def isclose(a, b) :
-			return math.isclose(a, b, rel_tol=1e-5, abs_tol=1e-5)
+			return abs(a - b) < self.tolerance
 		def f(e) :
 			try :
 				return float(e.subs(val))
@@ -23,11 +32,10 @@ class TrajBang3() :
 				return float(e)
 
 		cmd, dur, bch = self.compute()
-		val = {
-			'J_m': self.jm,
-			'A_m': self.am, 'A_0': self.a0,
-			'S_0': self.s0, 'S_g': self.sg,
-		}
+
+		valid_condition = bch != 'Z'
+
+		val = { 'J_m': jm, 'A_m': am, 'A_0': a0, 'S_0': s0, 'S_g': sg, }
 
 		n = len(dur)
 		T, J, A, S = self.equation(n)
@@ -35,10 +43,16 @@ class TrajBang3() :
 			val[f"T_{i}"] = dur[i]
 			val[f"J_{i}"] = cmd[i] * val['J_m']
 
-		print(' --> ', cmd, dur, bch,
-			"A", [f(i) for i in A], ok( isclose(A[-1].subs(val), 0.0) ),
-			"S", [f(i) for i in S], ok( isclose( S[-1].subs(val), self.sg) )
-		)
+		ag_condition = isclose(A[-1].subs(val), 0.0)
+		ai_condition = all( ((-am - self.tolerance) <= i.subs(val) <= (am + self.tolerance)) for i in A[1:] )
+		sg_condition = isclose(S[-1].subs(val), sg)
+
+		total_condition = ag_condition and ai_condition and sg_condition and valid_condition
+
+		if not ( total_condition ) :
+			print(f"TrajBang3({jm}, {am}, {a0}, {s0}, {sg}) ==>", cmd, dur, bch, k( total_condition ))
+			print('  >', "A", [f(i) for i in A], k(ag_condition), k(ai_condition))
+			print('  >', "S", [f(i) for i in S], k(sg_condition))
 
 	def equation(self, n) :
 
@@ -56,30 +70,40 @@ class TrajBang3() :
 	    return T, J, A, S
 
 	def compute(self) :
+
 		jm, am, a0, s0, sg = self.jm, self.am, self.a0, self.s0, self.sg
 		
 		# 1 step
-		ws = 1.0 if 0 <= (sg - s0) else -1.0
-		if (-a0**2) / (-2*jm*ws) + s0 == sg :
-			return [-ws], [(-a0) / (jm*k)], "A"
+		k = 1.0 if 0 <= (sg - s0) else -1.0
+		if (a0**2) / (2*k*jm) + s0 == sg :
+			return [-k], [(a0) / (k*jm)], 'A'
 
 		# 2 steps
-		# try with first solution
-		k = -1
-		dn = (a0**2/2) + k*jm*(sg - s0)
-		if 0 <= dn :
-			qn = math.sqrt(dn)
-			if qn <= am and -qn <= a0 :
-				return [k, -k], [ (-a0 - qn) / (jm * k), (-qn) / (jm * k) ], "B-"
+		for k in [-1, 1] :
+			m = (a0**2 / 2) + k*jm*(sg - s0)
+			if 0 <= m :
+				q = math.sqrt(m)
+				d1 = (-a0 + k*q) / (k*jm)
+				d2 = (k*q) / (k*jm)
+				if 0 <= d1 and 0 <= d2 and q <= am :
+					return [k, -k], [ d1, d2 ], 'B' + '+' if 0 < k else '-' 
 
-		# try with second solution
-		k = 1
-		dp = (a0**2/2) + k*jm*(sg - s0)
-		if 0 <= dp :
-			qp = math.sqrt(dp)
-			if qp <= am and a0 <= qp :
-				return [k, -k], [ (-a0 + qp) / (jm * k), (qp) / (jm * k) ], "B+"
+		# 3 steps
+		for k in [-1, 1] :
+			c0 = math.copysign(1.0, k*am - a0)
+			d0 = (k*am - a0) / (c0*jm)
+			s01 = d0*(a0+k*am) / 2
 
-if __name__ == '__main__' :
-	TrajBang3(1, 2, 2, 0, -1).check()
-	TrajBang3(1, 2, -2, 0, 1).check()
+			c2 = math.copysign(1.0, -k*am)
+			d2 = (-k*am)/(c2*jm)
+			s23 = d2*(k*am) / 2
+
+			s12 = sg - s01 - s23 - s0
+			d1 = s12 / (k*am)
+
+			if 0.0 <= d1 :
+				return [c0, 0, c2], [d0, d1, d2], 'C' + '+' if 0 < k else '-'
+
+		return [0, 0, 0], [0, 0, 0], 'Z'
+
+

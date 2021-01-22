@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width">
+	<title>trajbang3</title>
+
+	<link href="https://fonts.googleapis.com/css2?family=Crimson+Pro&family=Inconsolata&family=Montserrat&family=Roboto+Condensed&display=swap" rel="stylesheet">
+
+	<link rel="stylesheet" href="../css/style.css">
+
+	<script src='https://cdn.plot.ly/plotly-latest.min.js'></script>
+
+	<script>
+
+		MathJax = {
+			tex: {
+				inlineMath: [
+					['$', '$'],
+					['\\(', '\\)']
+				],
+				displayMath: [
+					['$$', '$$'],
+					['\\[', '\\]']
+				],
+				tags: "ams",
+			},
+			svg: {
+				fontCache: 'global',
+			}
+		};
+
+	</script>
+	<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg-full.js"></script>
+
+	<script src=../javascript/common.js></script>
+	<script src=script.js></script>
+
+</head>
+<body>
+<div id="main">
+	<h2>Trajbang 3rd order</h2>
+
+	<p>This page present a study about bang-bang transitions.</p>
+
+	<p>The idea here, is to find an <em>all-or-nothing</em> Jerk command which, integrated twice, will give the expected smoothing, while respecting the maximal jerk and maximal acceleration constraints.</p>
+
+	<p>In the following 3rd order trajbang algorithm, the three levels are:</p>
+	<ol>
+		<li>the <em>jerk</em>, which only takes values in the set $\left \{ -J_m, 0, J_m \right \}$</li>
+		<li>the <em>acceleration</em>, as an integration of the jerk, which only takes values in $\left [ -A_m, A_m \right ]$</li>
+		<li>the <em>speed</em>, as an integration of the acceleration.</li>
+	</ol>
+
+	<p>At the end of the transition:</p>
+	<ul>
+		<li>the acceleration must be null $A_g = 0$</li>
+		<li>the speed must have reach the target $S_g$</li>
+	</ul>
+
+	<p>This trajectory obtained can be used to determine the time and distance necessary to accelerate to a given speed.</p>
+
+	<label for="tb3_bch_out">Branch: </label>
+	<output name="tb3_bch_out" form="tb3_form_id"></output>
+	<br>
+	<label for="tb3_Time_out">$t = $</label>
+	<output name="tb3_Time_out" form="tb3_form_id"></output>
+
+	<h3>Jerk</h3>
+	<div id='j_plot'></div>
+	<h3>Acceleration</h3>
+	<div id='a_plot'></div>
+	<h3>Speed</h3>
+	<div id='s_plot'></div>
+	<h3>Position</h3>
+	<label for="tb3_Pg_out">$P_g = $</label>
+	<output name="tb3_Pg_out" form="tb3_form_id"></output>
+	<div id='p_plot'></div>
+
+	<form id="tb3_form_id" name="tb3_form" class="side_form">
+		<br>
+		<label for="tb3_jm_in">$J_m$</label>
+		<input type="range" min="0.1" max="10.0" value="1.0" step="0.1" name="tb3_jm_in">
+		<output name="tb3_jm_out"></output>
+		<br>
+		<label for="tb3_am_in">$A_m$</label>
+		<input type="range" min="0.1" max="10.0" value="2.0" step="0.1" name="tb3_am_in">
+		<output name="tb3_am_out"></output>
+		<br>
+		<label for="tb3_a0_in">$A_0$</label>
+		<input type="range" min="-10.0" max="10.0" value="0.0" step="0.1" name="tb3_a0_in">
+		<output name="tb3_a0_out"></output>
+		<br>
+		<label for="tb3_s0_in">$S_0$</label>
+		<input type="range" min="-10.0" max="10.0" value="0.0" step="0.1" name="tb3_s0_in">
+		<output name="tb3_s0_out"></output>
+		<br>
+		<label for="tb3_sg_in">$S_g$</label>
+		<input type="range" min="-10.0" max="10.0" value="6.0" step="0.1" name="tb3_sg_in">
+		<output name="tb3_sg_out"></output>
+	</form>
+
+	<script>
+		var h_form = document.forms.tb3_form;
+		var u = new TrajBang3();
+		h_form.addEventListener("input", () => { u.update() }, false);
+		h_form.addEventListener("change", () => { u.update() }, false);
+		u.update();
+	</script>
+
+</div>
+</body>
+</html>
