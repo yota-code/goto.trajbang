@@ -5,6 +5,6 @@ Object.defineProperty(Array.prototype, "last", {
 	}
 })
 
-function m_copysign(magnitude, sign) {
-	return magnitude * ((sign >= 0.0) ? (1.0) : (-1.0)) ;
+function m_copysign(value, sign) {
+	return value * ((sign >= 0.0) ? (1.0) : (-1.0)) ;
 }

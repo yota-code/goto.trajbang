@@ -83,10 +83,10 @@ class TrajBang3() :
 			m = (a0**2 / 2) + k*jm*(sg - s0)
 			if 0 <= m :
 				q = math.sqrt(m)
-				d1 = (-a0 + k*q) / (k*jm)
-				d2 = (k*q) / (k*jm)
-				if 0 <= d1 and 0 <= d2 and q <= am :
-					return [k, -k], [ d1, d2 ], 'B' + '+' if 0 < k else '-' 
+				d0 = (-a0 + k*q) / (k*jm)
+				d1 = (q) / (jm)
+				if 0 <= d0 and 0 <= d1 and q <= am :
+					return [k, -k], [ d0, d1 ], 'B' + '+' if 0 < k else '-' 
 
 		# 3 steps
 		for k in [-1, 1] :
