@@ -4,6 +4,7 @@
 
 import math
 import cmath
+import sys
 import time
 
 import sympy
@@ -192,9 +193,115 @@ class TrajBang3() :
 		return None, None, None
 
 
+	def compute_debug(self) :
+
+		result_map = dict()
+
+		jm, am, a0, s0, ag, sg = self.jm, self.am, self.a0, self.s0, self.ag, self.sg
+
+		# 0 step
+
+		result_map[''] = ( [], [], sg == s0 and a0 == ag )
+		
+		# 1 step
+		t0, k0 = split_sign(ag - a0)
+		s1 = a0*t0 + k0*jm*t0**2 / 2 + s0
+		result_map[c(k0)] = ( [k0], [t0], check_is_close(s1, sg) )
+
+		# 3 steps
+		for k in [-1, 1] :
+			t0, k0 = split_sign((k*am - a0) / jm)
+			s01 = a0*t0 + k0*jm*t0**2 / 2
+
+			t2, k2 = split_sign((ag - k*am) / jm)
+			s23 = k*am*t2 + k2*jm*t2**2 / 2
+
+			t1 = (sg - s01 - s23 - s0) / (k*am)
+
+			print(''.join(c(i) for i in [k0, k, k2]), t1)
+
+			result_map[''.join(c(i) for i in [k0, k, k2])] = ( [k0, 0, k2], [t0, t1, t2], 0 <= t1 )
+
+		# 2 steps
+		ad = (ag - a0) / jm
+		aq = (ag**2 - a0**2)
+		sd = jm * (sg - s0)
+
+		if ag != 0 :
+			t0_pz = ad
+			t1_pz = (-aq + 2*sd) / (2*ag*jm)
+			result_map['+0'] = ( [1, 0], [t0_pz, t1_pz], 0 < t0_pz and 0 < t1_pz )
+
+			t0_mz = -ad
+			t1_mz = (aq + 2*sd) / (2*ag*jm)
+
+			result_map['-0'] = ( [-1, 0], [t0_mz, t1_mz], 0 < t0_mz and 0 < t1_mz )
+
+		if a0 != 0 :
+			t0_zp = (-aq + 2*sd) / (2*a0*jm)
+			t1_zp = ad
+			result_map['0+'] = ( [0, 1], [t0_zp, t1_zp], 0 < t0_zp and 0 < t1_zp )
+
+			t0_zm = (aq + 2*sd) / (2*a0*jm)
+			t1_zm = -ad
+			result_map['0-'] = ( [0, 1], [t0_zm, t1_zm], 0 < t0_zm and 0 < t1_zm )
+
+		ap = (ag**2 + a0**2)
+
+		qp = ap/2 + sd
+		if 0 <= qp :
+			t0_pm = -(a0 + math.sqrt(qp)) / jm
+			t1_pm = -(ag + math.sqrt(qp)) / jm
+			result_map['+-'] = ( [1, -1], [t0_pm, t1_pm], 0 < t0_pm and 0 < t1_pm )
+
+		qd = ap/2 - sd
+		if 0 <= qd :
+			t0_mp = (a0 - math.sqrt(qd)) / jm
+			t1_mp = (ag - math.sqrt(qd)) / jm
+			result_map['-+'] = ( [-1, 1], [t0_mp, t1_mp], 0 < t0_mp and 0 < t1_mp )
+
+		return result_map, self.val
+
+	def compute_what(self) :
+		jm, am, a0, s0, ag, sg = self.jm, self.am, self.a0, self.s0, self.ag, self.sg
+
+		k2, m2 = split_sign(ag - a0)
+
+		# the time to transit from a0 to ag with a variation of ±jm
+		tr = m2 / jm
+		sr = a0 * tr + 0.5 * k2 * jm * tr**2
+
+		k1, m1 = split_sign(sg - s0 - sr)
+
+
+
 if __name__ == '__main__' :
 
-	TrajBang3(1, 3, 0, 3, -2, 2).check()
+	TrajBang3(1, 3, 0, 3, -2, 2).compute_what()
+
+
+
+	def print_debug(u) :
+		if '' in u :
+			cmd, dur, res = u['']
+			print((f"\x1b[32m" if res else f"\x1b[31m") + f"None\t:\x1b[0m {cmd} {dur}")
+
+		for i in ['+0', '-0', '0+', '0-', '+-', '-+'] :
+			if i in u :
+				cmd, dur, res = u[i]
+				print((f"\x1b[32m{i}" if res else f"\x1b[31m{i}") + f"\t:\x1b[0m {cmd} {dur}")
+			else :
+				print(f"\x1b[34m{i}\t: not computed\x1b[0m")
+
+		for i in u :
+			if len(i) == 3 :
+				cmd, dur, res = u[i]
+				print((f"\x1b[32m{i}" if res else f"\x1b[31m{i}") + f"\t:\x1b[0m {cmd} {dur}")
+
+
+	u, v = TrajBang3(1, 3, 0, 3, -2, 2).compute_debug()
+	print(v)
+	print_debug(u)
 	sys.exit(0)
 
 	# TrajBang3(1, 2, 0, 0, 0, 6).check()
