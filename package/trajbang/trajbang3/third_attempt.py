@@ -17,7 +17,7 @@ def check_is_inside(a, low, high) :
 def check_is_close(a, b) :
 	return abs(a - b) <= check_tolerance
 
-def split_sign(a) :
+def split_value_sign(a) :
 	return abs(a), math.copysign(1.0, a)
 
 def k(e) :
@@ -61,13 +61,10 @@ class TrajBang3() :
 			except AttributeError :
 				return float(e)
 
-		cmd, dur, bch = self.compute()
+		cmd, dur = self.compute()
 		if cmd is None :
 			print(f"TrajBang3({jm}, {am}, {a0}, {s0}, {ag}, {sg}) ==> KO")
 			raise ValueError
-
-
-		valid_condition = bch != 'Z'
 
 		n = len(dur)
 		T, J, A, S = TrajBang3.equation(n)
@@ -81,59 +78,121 @@ class TrajBang3() :
 		ag_condition = check_is_close(f(A[-1]), ag)
 		sg_condition = check_is_close(f(S[-1]), sg)
 
-		total_condition = ag_condition and ai_condition and sg_condition and valid_condition
+		total_condition = ag_condition and ai_condition and sg_condition
 
-		print(f"TrajBang3({jm}, {am}, {a0}, {s0}, {ag}, {sg}) ==>", cmd, dur, bch, k( total_condition ))
-		try :
-			assert( total_condition )
-		except AssertionError :
-			print('  >', "A", [f(i) for i in A], k(ag_condition), k(ai_condition))
-			print('  >', "S", [f(i) for i in S], k(sg_condition))
-			raise
+		print(f"TrajBang3({jm}, {am}, {a0}, {s0}, {ag}, {sg}) ==>", cmd, dur, k( total_condition ))
+		#try :
+		#	assert( total_condition )
+		#except AssertionError :
+		print('  >', "A", [f(i) for i in A], k(ag_condition), k(ai_condition))
+		print('  >', "S", [f(i) for i in S], k(sg_condition))
+		#	raise
 
 
 	@staticmethod
 	def equation(n) :
 
-	    T = list()
-	    J = list()
-	    A = [sympy.symbols('A_0'),]
-	    S = [sympy.symbols('S_0'),]
-	    
-	    for i in range(n) :
-	        T.append(sympy.symbols(f"T_{i}"))
-	        J.append(sympy.symbols(f"J_{i}"))
-	        A.append( (A[-1] + J[i] * T[i]).simplify() )
-	        S.append( (S[-1] + A[i] * T[i] + J[i] * T[i]**2 / 2).simplify() )
-	       
-	    return T, J, A, S
+		T = list()
+		J = list()
+		A = [sympy.symbols('A_0'),]
+		S = [sympy.symbols('S_0'),]
+
+		for i in range(n) :
+			T.append(sympy.symbols(f"T_{i}"))
+			J.append(sympy.symbols(f"J_{i}"))
+			A.append( (A[-1] + J[i] * T[i]).simplify() )
+			S.append( (S[-1] + A[i] * T[i] + J[i] * T[i]**2 / 2).simplify() )
+
+		return T, J, A, S
+
+	def get_q(self, a_from, a_to) :
+		m, w = split_value_sign(a_to - a_from)
+		t = m / self.jm
+		q = (a_to + a_from) * t / 2
+		return q, t, w		
 
 	def compute(self) :
 
 		# print(self.val)
 
+		cmd = [0.0,]*8
+		dur = [0.0,]*8
+
 		jm, am, a0, s0, ag, sg = self.jm, self.am, self.a0, self.s0, self.ag, self.sg
 
-		# 0 step
-		if sg == s0 and a0 == ag :
-			return [], [], ''
-
-		kr, mr = split_sign(ag - a0)
-		qr = 0.5 * (a0 + ag) * mr / jm
-
-		if check_is_close(sg - s0, qr) :
-			return [kr], [tr], c(kr)
+		if am < a0:
+			qi, ti, wi = self.get_q(a0, am)
+			ap = am
+		elif a0 < -am :
+			qi, ti, wi = self.get_q(a0, -am)
+			ap = -am
 		else :
+			qi, ti, wi = 0.0, 0.0, 0.0
+			ap = a0
 
-		
+		if qi != 0 :
+			cmd[0] = wi
+			dur[0] = ti
 
+		print(f"qi={qi} ti={ti} wi={wi} ap={ap}")
 
-		return None, None, None
+		qr, tr, wr = self.get_q(ap, ag)
+
+		cmd[4] = wr
+		dur[4] = tr
+
+		ql = sg - s0 - qi - qr
+		ab = ag if ( 0 <= ql * wr ) else ap
+
+		print(f"qr={qr} tr={tr} wr={wr} ql={ql} ab={ab}")
+
+		if ql != 0.0 :
+			wd = math.copysign(1.0, ql)
+
+			de = ab**2 + jm*abs(ql)
+			ad_1 = ( -ab + math.sqrt(de) ) * wd
+			ad_2 = ( -ab - math.sqrt(de) ) * wd
+
+			if 0 < ad_2 :
+				ad = ad_2 # ad must be positive
+			else :
+				ad = ad_1
+			print(f"ad_1={ad_1} ad_2={ad_2} ad={ad} wd={wd}")
+
+		else :
+			ad, wd = 0.0, 0.0
+			print(f"ad={ad}")
+
+		if ( 0 <= ql * wr ) :
+			i = 4
+		else :
+			i = 0
+
+		cmd[i+1] = wd
+		cmd[i+3] = -wd
+
+		at = abs(ab) + ad # ad must be positive
+		print(f"abs(ab)={abs(ab)} ad={ad} at={at} am={am}")
+
+		if am < abs(at) :
+			dur[i+1] = (am - ab) / jm
+			# dur[i+2] = 2*(at - am)/jm + (at-am)/jm * (at-am)/am
+			dur[i+2] = (2 + (at-am)/am) * (at - am)/jm
+			dur[i+3] = (am - ab) / jm
+		else :
+			dur[i+1] = ad / jm
+			dur[i+3] = ad / jm
+
+		return cmd, dur
 
 
 if __name__ == '__main__' :
 
-	TrajBang3(1, 3, 0, 3, -2, 2).compute_what()
+	TrajBang3(1, 2, 3, 0, -1, 2).check()
+
+	TrajBang3(1, 2, 0, 0, 0, 10).check()
+
+	sys.exit()
 
 
 
@@ -170,7 +229,7 @@ if __name__ == '__main__' :
 	# sys.exit(0)
 
 	# TrajBang3(3.2, 3.4, 2.3, 0.3, -2.3, -1.7).check()
-	
+
 	import random
 
 	random.seed(0)
