@@ -2,12 +2,20 @@
 
 """ dans cette version on a également une accélération Ag """
 
-import math
 import cmath
+import collections
+import itertools
+import math
+import random
 import sys
 import time
 
 import sympy
+import numpy as np
+
+from cc_pathlib import Path
+
+trajbang_T = collections.namedtuple('trajbang_T', ['cmd', 'dur'])
 
 check_tolerance = 1e-6
 
@@ -36,7 +44,7 @@ class TrajBang3() :
 
 	mini_m = 0.1
 
-	def __init__(self, jm, am, a0, s0, ag, sg) :
+	def __init__(self, jm: float, am: float, a0: float, s0: float, ag: float, sg: float) :
 
 		self.jm, self.am, self.a0, self.s0, self.ag, self.sg = abs(jm), abs(am), a0, s0, ag, sg
 
@@ -61,16 +69,23 @@ class TrajBang3() :
 			except AttributeError :
 				return float(e)
 
-		cmd, dur = self.compute()
-		if cmd is None :
-			print(f"TrajBang3({jm}, {am}, {a0}, {s0}, {ag}, {sg}) ==> KO")
-			raise ValueError
+		res = self.compute()
+
+		cmd = [cmd for cmd, dur in res]
+		dur = [dur for cmd, dur in res]
 
 		n = len(dur)
-		T, J, A, S = TrajBang3.equation(n)
-		for i in range(n) :
-			val[f"T_{i}"] = dur[i]
-			val[f"J_{i}"] = cmd[i] * val['J_m']
+
+		T = list()
+		J = list()
+		A = [a0,]
+		S = [s0,]
+
+		for i in range( len(dur) ) :
+			T.append(dur[i])
+			J.append(cmd[i] * jm)
+			A.append( (A[-1] + J[i] * T[i]) )
+			S.append( (S[-1] + A[i] * T[i] + J[i] * T[i]**2 / 2) )
 
 		# check all acceleration values are inside the limits (a0 can be out of bound)
 		ai_condition = all( check_is_inside(f(i), -am, am) for i in A[1:] )
@@ -80,14 +95,19 @@ class TrajBang3() :
 
 		total_condition = ag_condition and ai_condition and sg_condition
 
-		print(f"TrajBang3({jm}, {am}, {a0}, {s0}, {ag}, {sg}) ==>", cmd, dur, k( total_condition ))
-		#try :
-		#	assert( total_condition )
-		#except AssertionError :
-		print('  >', "A", [f(i) for i in A], k(ag_condition), k(ai_condition))
-		print('  >', "S", [f(i) for i in S], k(sg_condition))
+		print(f"TrajBang3(jm={jm}, am={am}, a0={a0}, s0={s0}, ag={ag}, sg={sg}) ==>", k( total_condition ))
+
+		print("> cmd :", '\t'.join(f"{i:05g}" for i in cmd))
+		print("> dur :", '\t'.join(f"{i:05g}" for i in dur))
+		print("-" * 4)
+		print("  > T :", '\t'.join(f"{i:05g}" for i in ([0.0,] + list(itertools.accumulate(T)))))
+		print("  > A :", '\t'.join(f"{i:05g}" for i in A), f" \t=( {ag} )>", k(ag_condition), k(ai_condition))
+		print("  > S :", '\t'.join(f"{i:05g}" for i in S), f" \t=( {sg} )>", k(sg_condition))
 		#	raise
 
+		if not total_condition :
+			with Path('error_listing.log').open('at') as fid :
+				fid.write(f"TrajBang3(jm={jm}, am={am}, a0={a0}, s0={s0}, ag={ag}, sg={sg}) ==>\n\t{cmd}\n\t{dur}\n")
 
 	@staticmethod
 	def equation(n) :
@@ -113,13 +133,11 @@ class TrajBang3() :
 
 	def compute(self) :
 
-		# print(self.val)
-
-		cmd = [0.0,]*8
-		dur = [0.0,]*8
+		res = np.zeros((8, 2))
 
 		jm, am, a0, s0, ag, sg = self.jm, self.am, self.a0, self.s0, self.ag, self.sg
 
+		# computation of the initial segment, from A0 to the closest of Am or -Am
 		if am < a0:
 			qi, ti, wi = self.get_q(a0, am)
 			ap = am
@@ -130,67 +148,112 @@ class TrajBang3() :
 			qi, ti, wi = 0.0, 0.0, 0.0
 			ap = a0
 
-		if qi != 0 :
-			cmd[0] = wi
-			dur[0] = ti
-
+		res[0] = [wi, ti]
 		print(f"qi={qi} ti={ti} wi={wi} ap={ap}")
 
+		#computation of the final segment, from Ap to Ag
 		qr, tr, wr = self.get_q(ap, ag)
 
-		cmd[4] = wr
-		dur[4] = tr
+		res[4] = [wr, tr]
+		print(f"qr={qr} tr={tr} wr={wr}")
 
+		# computation of the remaining part to complete up to Ql
 		ql = sg - s0 - qi - qr
+		print(f"ql={ql}")
+
 		ab = ag if ( 0 <= ql * wr ) else ap
 
-		print(f"qr={qr} tr={tr} wr={wr} ql={ql} ab={ab}")
+		print(f"ab={ab}")
 
 		if ql != 0.0 :
 			wd = math.copysign(1.0, ql)
+
+			#print(f"wd={wd}")
 
 			de = ab**2 + jm*abs(ql)
 			ad_1 = ( -ab + math.sqrt(de) ) * wd
 			ad_2 = ( -ab - math.sqrt(de) ) * wd
 
-			if 0 < ad_2 :
-				ad = ad_2 # ad must be positive
-			else :
+			if 0 <= ad_1 :
 				ad = ad_1
+			else :
+				ad = ad_2
+
+			#ab = abs(an)
+
 			print(f"ad_1={ad_1} ad_2={ad_2} ad={ad} wd={wd}")
+
+			i = 4 if ( 0 <= ql * wr ) else 0
+
+			at = ab + ad*wd
+
+			print(f"at={at}")
+
+			if am < abs(at) :
+				res[i+1] = [wd, abs(am*wd - ab)/jm]
+				res[i+2] = [0.0, (at**2 - am**2)/(am*jm)]
+				res[i+3] = [-wd, abs(am*wd - ab)/jm]
+			else :
+				res[i+1] = [wd, ad / jm]
+				res[i+3] = [-wd, ad / jm]
+
+			# res[i+1] = [wd, ad / jm]
+			# res[i+3] = [-wd, ad / jm]
 
 		else :
 			ad, wd = 0.0, 0.0
-			print(f"ad={ad}")
 
-		if ( 0 <= ql * wr ) :
-			i = 4
-		else :
-			i = 0
-
-		cmd[i+1] = wd
-		cmd[i+3] = -wd
-
-		at = abs(ab) + ad # ad must be positive
-		print(f"abs(ab)={abs(ab)} ad={ad} at={at} am={am}")
-
-		if am < abs(at) :
-			dur[i+1] = (am - ab) / jm
-			# dur[i+2] = 2*(at - am)/jm + (at-am)/jm * (at-am)/am
-			dur[i+2] = (2 + (at-am)/am) * (at - am)/jm
-			dur[i+3] = (am - ab) / jm
-		else :
-			dur[i+1] = ad / jm
-			dur[i+3] = ad / jm
-
-		return cmd, dur
+		return res
 
 
 if __name__ == '__main__' :
 
-	TrajBang3(1, 2, 3, 0, -1, 2).check()
+	# TrajBang3(jm=20, am=8, a0=53, s0=-93, ag=4, sg=-24).check()
+	# TrajBang3(jm=1, am=2, a0=3, s0=0, ag=1, sg=2.75).check()
+	# TrajBang3(jm=1, am=2, a0=3, s0=0, ag=1, sg=-0.5).check()
+	# TrajBang3(jm=30, am=45, a0=40, s0=-15, ag=5, sg=-35).check()
+	TrajBang3(2, 2, 0, 0, 0, 8).check()
+	TrajBang3(jm=6, am=9, a0=8, s0=-3, ag=1, sg=-7).check()
 
-	TrajBang3(1, 2, 0, 0, 0, 10).check()
+	test_vec = [
+		[1, 2, 0, 0, 0, 9],
+		[1, 2, 1, -0.5, 0, 0],
+		[1, 1, 0.5, 0, 0, 0.5],
+		[1, 1, 0.5, 0, 0, 0.5],
+		[1, 1, 0.5, 0, 0, 0.5],
+		[1, 1, 0.5, 0, 0, 0.5],
+		[1, 1, 0, 0, 0, 0.5],
+		[1, 1, 0, 0, 0, 0.5],
+		[1, 1, 0, 0, 0, 2],
+		[1, 1, 0, 0, 0, -2],
+		[1, 1, -0.25, 0, 0, -2],
+		[1, 1, 0.25, 0, 0, 2],
+		[1, 1, 0.75, 0, 0, -2],
+		[1, 1, -0.75, 0, 0, 2],
+		[1, 2.0, -1.0, -2.0, 0, 4.0],
+		[1, 2, 0, 0, 0, 6],
+		[1, 2, 3, -2, 0, 3],
+		[1, 2, 3, -2, 0, 6],
+		[1, 2, 3, 0, -1, 2],
+		[1, 2, 0, 0, 0, 10],
+		[1, 2, 0, 0, 0, 9],
+		[1, 2, 3, 0, 1, 2.75],
+		[1, 2, 3, 0, 1, -0.5]
+	]
+
+	for vec in test_vec :
+		TrajBang3(* vec).check()
+
+	m = 128.0
+	while True:	
+		jm = round(random.uniform(0.1, m), 1)
+		am = round(random.uniform(0.1, m), 1)
+		a0 = round(random.uniform(-m, m), 1)
+		s0 = round(random.uniform(-m, m), 1)
+		ag = round(random.uniform(-am, am), 1)
+		sg = round(random.uniform(-m, m), 1)
+
+		TrajBang3(jm, am, a0, s0, ag, sg).check()
 
 	sys.exit()
 
