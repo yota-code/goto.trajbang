@@ -80,16 +80,12 @@ class TrajBang3() :
 		J = list()
 		A = [a0,]
 		S = [s0,]
-		D = [0.0,]
 
 		for i in range( len(dur) ) :
 			T.append(dur[i])
 			J.append(cmd[i] * jm)
 			A.append( (A[-1] + J[i] * T[i]) )
 			S.append( (S[-1] + A[i] * T[i] + J[i] * T[i]**2 / 2) )
-			D.append( (D[-1] + S[i] * T[i] + A[i] * T[i]**2 / 2 + J[i] * T[i]**3 / 6) )
-
-		print(D)
 
 		# check all acceleration values are inside the limits (a0 can be out of bound)
 		ai_condition = all( check_is_inside(f(i), -am, am) for i in A[1:] )
@@ -101,12 +97,12 @@ class TrajBang3() :
 
 		print(f"TrajBang3(jm={jm}, am={am}, a0={a0}, s0={s0}, ag={ag}, sg={sg}) ==>", k( total_condition ))
 
-		print("> cmd :", '\t'.join(f"{i:5g}" for i in cmd))
-		print("> dur :", '\t'.join(f"{i:5g}" for i in dur))
+		print("> cmd :", '\t'.join(f"{i:05g}" for i in cmd))
+		print("> dur :", '\t'.join(f"{i:05g}" for i in dur))
 		print("-" * 4)
-		print("  > T :", '\t'.join(f"{i:5g}" for i in ([0.0,] + list(itertools.accumulate(T)))))
-		print("  > A :", '\t'.join(f"{i:5g}" for i in A), f" \t=( {ag} )>", k(ag_condition), k(ai_condition))
-		print("  > S :", '\t'.join(f"{i:5g}" for i in S), f" \t=( {sg} )>", k(sg_condition))
+		print("  > T :", '\t'.join(f"{i:05g}" for i in ([0.0,] + list(itertools.accumulate(T)))))
+		print("  > A :", '\t'.join(f"{i:05g}" for i in A), f" \t=( {ag} )>", k(ag_condition), k(ai_condition))
+		print("  > S :", '\t'.join(f"{i:05g}" for i in S), f" \t=( {sg} )>", k(sg_condition))
 		#	raise
 
 		if not total_condition :
@@ -120,17 +116,14 @@ class TrajBang3() :
 		J = list()
 		A = [sympy.symbols('A_0'),]
 		S = [sympy.symbols('S_0'),]
-		D = [0.0,]
 
 		for i in range(n) :
 			T.append(sympy.symbols(f"T_{i}"))
 			J.append(sympy.symbols(f"J_{i}"))
 			A.append( (A[-1] + J[i] * T[i]).simplify() )
 			S.append( (S[-1] + A[i] * T[i] + J[i] * T[i]**2 / 2).simplify() )
-			D.append( (D[-1] + S[i] * T[i] + A[i] * T[i]**2 / 2 + J[i] * T[i]**3 / 6).simplify() )
 
-
-		return T, J, A, S, D
+		return T, J, A, S
 
 	def get_q(self, a_from, a_to) :
 		m, w = split_value_sign(a_to - a_from)
@@ -145,17 +138,15 @@ class TrajBang3() :
 		jm, am, a0, s0, ag, sg = self.jm, self.am, self.a0, self.s0, self.ag, self.sg
 
 		# computation of the initial segment, from A0 to the closest of Am or -Am
-
-		ap = min(max(a0, -am), am)
-		# if am < a0:
-		# 	ap = am
-		# elif a0 < -am :
-		# 	qi, ti, wi = self.get_q(a0, -am)
-		# 	ap = -am
-		# else :
-		# 	qi, ti, wi = 0.0, 0.0, 0.0
-		# 	ap = a0
-		qi, ti, wi = self.get_q(a0, ap)
+		if am < a0:
+			qi, ti, wi = self.get_q(a0, am)
+			ap = am
+		elif a0 < -am :
+			qi, ti, wi = self.get_q(a0, -am)
+			ap = -am
+		else :
+			qi, ti, wi = 0.0, 0.0, 0.0
+			ap = a0
 
 		res[0] = [wi, ti]
 		print(f"qi={qi} ti={ti} wi={wi} ap={ap}")
@@ -170,47 +161,47 @@ class TrajBang3() :
 		qd = sg - s0 - qi - qr
 		print(f"qd={qd}")
 
-		ab = ag if ( 0 <= qd * wr ) else ap
+		ad = ag if ( 0 <= qd * wr ) else ap
 
-		print(f"ab={ab}")
+		print(f"ad={ad}")
 
-		# if qd != 0.0 :
-		wd = math.copysign(1.0, qd)
+		if qd != 0.0 :
+			wd = math.copysign(1.0, qd)
 
-		#print(f"wd={wd}")
+			#print(f"wd={wd}")
 
-		de = ab**2 + jm*abs(qd)
-		ad_1 = ( -ab + math.sqrt(de) ) * wd
-		ad_2 = ( -ab - math.sqrt(de) ) * wd
+			de = ad**2 + jm*abs(qd)
+			ad_1 = ( -ad + math.sqrt(de) ) * wd
+			ad_2 = ( -ad - math.sqrt(de) ) * wd
 
-		if 0 <= ad_1 :
-			ad = ad_1
-		else :
-			ad = ad_2
+			if 0 <= ad_1 :
+				ad = ad_1
+			else :
+				ad = ad_2
 
-		#ab = abs(an)
+			#ad = abs(an)
 
-		print(f"ad_1={ad_1} ad_2={ad_2} ad={ad} wd={wd}")
+			print(f"ad_1={ad_1} ad_2={ad_2} ad={ad} wd={wd}")
 
-		i = 4 if ( 0 <= qd * wr ) else 0
+			i = 4 if ( 0 <= qd * wr ) else 0
 
-		at = ab + ad*wd
+			at = ad + ad*wd
 
-		print(f"at={at}")
+			print(f"at={at}")
 
-		if am < abs(at) :
-			res[i+1] = [wd, abs(am*wd - ab)/jm]
-			res[i+2] = [0.0, (at**2 - am**2)/(am*jm)]
-			res[i+3] = [-wd, abs(am*wd - ab)/jm]
-		else :
-			res[i+1] = [wd, ad / jm]
-			res[i+3] = [-wd, ad / jm]
+			if am < abs(at) :
+				res[i+1] = [wd, abs(am*wd - ad)/jm]
+				res[i+2] = [0.0, (at**2 - am**2)/(am*jm)]
+				res[i+3] = [-wd, abs(am*wd - ad)/jm]
+			else :
+				res[i+1] = [wd, ad / jm]
+				res[i+3] = [-wd, ad / jm]
 
 			# res[i+1] = [wd, ad / jm]
 			# res[i+3] = [-wd, ad / jm]
 
-		#else :
-		#	ad, wd = 0.0, 0.0
+		else :
+			ad, wd = 0.0, 0.0
 
 		return res
 
@@ -221,14 +212,11 @@ if __name__ == '__main__' :
 	# TrajBang3(jm=1, am=2, a0=3, s0=0, ag=1, sg=2.75).check()
 	# TrajBang3(jm=1, am=2, a0=3, s0=0, ag=1, sg=-0.5).check()
 	# TrajBang3(jm=30, am=45, a0=40, s0=-15, ag=5, sg=-35).check()
-	TrajBang3(1, 2, 0, 0, 0, 8).check()
-	# TrajBang3(1, 2, 0, 0, 0, 3).check()
-	sys.exit(0)
-
-	TrajBang3(1, 2, 3, 0, 1, -0.5).check()
+	TrajBang3(2, 2, 0, 0, 0, 8).check()
 	# TrajBang3(jm=6, am=9, a0=8, s0=-3, ag=1, sg=-7).check()
 
-	
+
+	sys.exit(0)
 	test_vec = [
 		[1, 2, 0, 0, 0, 9],
 		[1, 2, 1, -0.5, 0, 0],
@@ -257,7 +245,6 @@ if __name__ == '__main__' :
 
 	for vec in test_vec :
 		TrajBang3(* vec).check()
-	sys.exit(0)
 
 	m = 128.0
 	while True:	

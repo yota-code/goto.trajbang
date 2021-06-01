@@ -4,6 +4,7 @@
 
 import cmath
 import collections
+import fractions
 import itertools
 import math
 import random
@@ -12,6 +13,7 @@ import time
 
 import sympy
 import numpy as np
+import matplotlib.pyplot as plt
 
 from cc_pathlib import Path
 
@@ -40,23 +42,87 @@ def c(e) :
 		return '0'
 
 
+def egcd(a, b):
+    if a == 0:
+        return b, 0, 1
+    else:
+        gcd, x, y = egcd(b % a, a)
+        return gcd, y - (b // a) * x, x
+
+print( egcd(30, 50) )
+
+
 class TrajBang3() :
 
 	mini_m = 0.1
 
-	def __init__(self, jm: float, am: float, a0: float, s0: float, ag: float, sg: float) :
+	def __init__(self, jm: float, am: float, a0: float, s0: float, ag: float, sg: float, tm: float) :
 
-		self.jm, self.am, self.a0, self.s0, self.ag, self.sg = abs(float(jm)), abs(float(am)), float(a0), float(s0), float(ag), float(sg)
+		self.tm = fractions.Fraction(int(1000 * tm), 1000) # real period of the computation in seconds
+		self.jm = fractions.Fraction(int(1000 * abs(jm)), 1000)
+		self.am = fractions.Fraction(int(1000 * abs(am)), 1000)
 
-		if abs(self.am) < self.mini_m :
-			raise ValueError(f"Maximal acceleration can not be less than {self.mini_m}")
+		print(self.tm, self.jm, self.am)
 
-		if abs(self.jm) < self.mini_m :
-			raise ValueError(f"Maximal jerk can not be less than {self.mini_m}")
+		self.a0, self.s0 = a0, s0
+		self.ag = min(self.am, max(- self.am, ag))
+		self.sg = sg
+
+		self.compute_kj()
+
+	def compute_kj(self) :
+		jm, tm = self.jm, self.tm
+		print(jm, tm, jm * tm, 6 * (jm * tm).denominator)
+
+		v = float(jm * tm)
+
+		for i in range(1, 3000) :
+			if (v * i) % 6 == 0 :
+				print(i)
+				break
+
+
+		self.kt = 1.0
+		self.kj = 1.0
 
 	@property
 	def val(self) :
 		return { 'J_m': self.jm, 'A_m': self.am, 'A_0': self.a0, 'S_0': self.s0, 'A_g': self.ag, 'S_g': self.sg, }
+
+	def integrate(self, result_lst, plot=None) :
+		jm, am, a0, s0, ag, sg = self.jm, self.am, self.a0, self.s0, self.ag, self.sg
+
+		T = [0,]
+		J = [0,]
+		A = [a0,]
+		S = [s0,]
+		D = [0,]
+
+		for cmd, dur in result_lst :
+			t = int(dur)
+
+			T.append(T[-1] + t)
+			J.append(int(cmd) * jm)
+
+			A.append( (A[-1] + J[-1]*t) )
+			S.append( (S[-1] + A[-2]*t + J[-1]*t**2 / 2) )
+			D.append( (D[-1] + S[-2]*t + A[-2]*t**2 / 2 + J[-1]*t**3 / 6) )
+
+		print(f"J = {', '.join(str(i) for i in J)}")
+		print(f"A = {', '.join(str(i) for i in A)}")
+		print(f"S = {', '.join(str(i) for i in S)}")
+		print(f"D = {', '.join(str(i) for i in D)}")
+
+		if plot :
+			plt.subplot(4, 1, 1)
+			plt.step(T, J)
+			plt.subplot(4, 1, 2)
+			plt.plot(T, A)
+			plt.subplot(4, 1, 3)
+			plt.plot(T, S)
+			plt.subplot(4, 1, 4)
+			plt.plot(T, D)
+			plt.show()
 
 	def check(self) :
 
@@ -112,25 +178,6 @@ class TrajBang3() :
 		if not total_condition :
 			with Path('error_listing.log').open('at') as fid :
 				fid.write(f"TrajBang3(jm={jm}, am={am}, a0={a0}, s0={s0}, ag={ag}, sg={sg}) ==>\n\t{cmd}\n\t{dur}\n")
-
-	@staticmethod
-	def equation(n) :
-
-		T = list()
-		J = list()
-		A = [sympy.symbols('A_0'),]
-		S = [sympy.symbols('S_0'),]
-		D = [0.0,]
-
-		for i in range(n) :
-			T.append(sympy.symbols(f"T_{i}"))
-			J.append(sympy.symbols(f"J_{i}"))
-			A.append( (A[-1] + J[i] * T[i]).simplify() )
-			S.append( (S[-1] + A[i] * T[i] + J[i] * T[i]**2 / 2).simplify() )
-			D.append( (D[-1] + S[i] * T[i] + A[i] * T[i]**2 / 2 + J[i] * T[i]**3 / 6).simplify() )
-
-
-		return T, J, A, S, D
 
 	def get_q(self, a_from, a_to) :
 		m, w = split_value_sign(a_to - a_from)
@@ -216,6 +263,16 @@ class TrajBang3() :
 
 
 if __name__ == '__main__' :
+
+	result_lst = [
+		[6, 20],
+		[0, 20],
+		[-6, 20]
+	]
+	u = TrajBang3(1.4, 3.7, 0, 0, 0, 8, 0.08)
+	sys.exit(0)
+	u.integrate(result_lst, True)
+	sys.exit(0)
 
 	# TrajBang3(jm=20, am=8, a0=53, s0=-93, ag=4, sg=-24).check()
 	# TrajBang3(jm=1, am=2, a0=3, s0=0, ag=1, sg=2.75).check()
