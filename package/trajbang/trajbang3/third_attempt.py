@@ -10,7 +10,6 @@ import random
 import sys
 import time
 
-import sympy
 import numpy as np
 
 from cc_pathlib import Path
@@ -114,25 +113,26 @@ class TrajBang3() :
 				fid.write(f"TrajBang3(jm={jm}, am={am}, a0={a0}, s0={s0}, ag={ag}, sg={sg}) ==>\n\t{cmd}\n\t{dur}\n")
 
 	@staticmethod
-	def equation(n) :
+	def symbolic_equation(n) :
+		import sympy
 
 		T = list()
 		J = list()
 		A = [sympy.symbols('A_0'),]
 		S = [sympy.symbols('S_0'),]
-		D = [0.0,]
+		P = [0.0,]
 
 		for i in range(n) :
 			T.append(sympy.symbols(f"T_{i}"))
 			J.append(sympy.symbols(f"J_{i}"))
 			A.append( (A[-1] + J[i] * T[i]).simplify() )
 			S.append( (S[-1] + A[i] * T[i] + J[i] * T[i]**2 / 2).simplify() )
-			D.append( (D[-1] + S[i] * T[i] + A[i] * T[i]**2 / 2 + J[i] * T[i]**3 / 6).simplify() )
+			P.append( (D[-1] + S[i] * T[i] + A[i] * T[i]**2 / 2 + J[i] * T[i]**3 / 6).simplify() )
 
-
-		return T, J, A, S, D
+		return T, J, A, S, P
 
 	def get_q(self, a_from, a_to) :
+		""" return q, the amount of speed delta spent while going from a_from to a_to at Jm """
 		m, w = split_value_sign(a_to - a_from)
 		t = m / self.jm
 		q = (a_to + a_from) * t / 2

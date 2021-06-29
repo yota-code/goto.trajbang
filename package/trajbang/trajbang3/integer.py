@@ -51,45 +51,38 @@ def egcd(a, b):
 
 print( egcd(30, 50) )
 
-
 class TrajBang3() :
 
 	mini_m = 0.1
 
-	def __init__(self, jm: float, am: float, a0: float, s0: float, ag: float, sg: float, tm: float) :
-
-		self.tm = fractions.Fraction(int(1000 * tm), 1000) # real period of the computation in seconds
-		self.jm = fractions.Fraction(int(1000 * abs(jm)), 1000)
-		self.am = fractions.Fraction(int(1000 * abs(am)), 1000)
-
-		print(self.tm, self.jm, self.am)
-
+	def __init__(self, jm: float, am: float) :
+		
 		self.a0, self.s0 = a0, s0
 		self.ag = min(self.am, max(- self.am, ag))
 		self.sg = sg
 
-		self.compute_kj()
+	# 	self.compute_kj()
 
-	def compute_kj(self) :
-		jm, tm = self.jm, self.tm
-		print(jm, tm, jm * tm, 6 * (jm * tm).denominator)
+	# def compute_kj(self) :
+	# 	jm, tm = self.jm, self.tm
+	# 	print(jm, tm, jm * tm, 6 * (jm * tm).denominator)
 
-		v = float(jm * tm)
+	# 	v = float(jm * tm)
 
-		for i in range(1, 3000) :
-			if (v * i) % 6 == 0 :
-				print(i)
-				break
+	# 	for i in range(1, 3000) :
+	# 		if (v * i) % 6 == 0 :
+	# 			print(i)
+	# 			break
 
 
-		self.kt = 1.0
-		self.kj = 1.0
+	# 	self.kt = 1.0
+	# 	self.kj = 1.0
 
 	@property
 	def val(self) :
 		return { 'J_m': self.jm, 'A_m': self.am, 'A_0': self.a0, 'S_0': self.s0, 'A_g': self.ag, 'S_g': self.sg, }
 
-	def integrate(self, result_lst, plot=None) :
+	def integrate(self, res, plot=None) :
 		jm, am, a0, s0, ag, sg = self.jm, self.am, self.a0, self.s0, self.ag, self.sg
 
 		T = [0,]
@@ -98,7 +91,7 @@ class TrajBang3() :
 		S = [s0,]
 		D = [0,]
 
-		for cmd, dur in result_lst :
+		for cmd, dur in res :
 			t = int(dur)
 
 			T.append(T[-1] + t)
@@ -124,7 +117,7 @@ class TrajBang3() :
 			plt.plot(T, D)
 			plt.show()
 
-	def check(self) :
+	def check(self, a0: float, s0: float, ag: float, sg: float) :
 
 		jm, am, a0, s0, ag, sg = self.jm, self.am, self.a0, self.s0, self.ag, self.sg
 		val = self.val
@@ -183,25 +176,17 @@ class TrajBang3() :
 		m, w = split_value_sign(a_to - a_from)
 		t = m / self.jm
 		q = (a_to + a_from) * t / 2
-		return q, t, w		
+		return q, t, w
 
-	def compute(self) :
+	def compute(self, a0: float, s0: float, ag: float, sg: float) :
 
 		res = np.zeros((8, 2))
 
-		jm, am, a0, s0, ag, sg = self.jm, self.am, self.a0, self.s0, self.ag, self.sg
+		jm, am = self.jm, self.am
+		self.a0, self.s0, self.ag, self.sg = self.a0, self.s0, self.ag, self.sg
 
-		# computation of the initial segment, from A0 to the closest of Am or -Am
-
-		ap = min(max(a0, -am), am)
-		# if am < a0:
-		# 	ap = am
-		# elif a0 < -am :
-		# 	qi, ti, wi = self.get_q(a0, -am)
-		# 	ap = -am
-		# else :
-		# 	qi, ti, wi = 0.0, 0.0, 0.0
-		# 	ap = a0
+		# computation of the initial segment, from A0 to Ap the closest of either Am or -Am
+		ap = max(-am, min(a0, am))
 		qi, ti, wi = self.get_q(a0, ap)
 
 		res[0] = [wi, ti]
@@ -213,38 +198,26 @@ class TrajBang3() :
 		res[4] = [wr, tr]
 		print(f"qr={qr} tr={tr} wr={wr}")
 
-		# computation of the remaining part to complete up to qd
+		# computation of Qd the remaining part to go from S0 to Sg without the initial and final segments
 		qd = sg - s0 - qi - qr
 		print(f"qd={qd}")
 
 		ab = ag if ( 0 <= qd * wr ) else ap
-
 		print(f"ab={ab}")
 
-		# if qd != 0.0 :
+		# if Qd != 0.0 :
 		wd = math.copysign(1.0, qd)
-
-		#print(f"wd={wd}")
 
 		de = ab**2 + jm*abs(qd)
 		ad_1 = ( -ab + math.sqrt(de) ) * wd
 		ad_2 = ( -ab - math.sqrt(de) ) * wd
-
-		if 0 <= ad_1 :
-			ad = ad_1
-		else :
-			ad = ad_2
-
-		#ab = abs(an)
-
+		ad = ad_1 if 0 <= ad_1 else ad_2
 		print(f"ad_1={ad_1} ad_2={ad_2} ad={ad} wd={wd}")
 
-		i = 4 if ( 0 <= qd * wr ) else 0
-
 		at = ab + ad*wd
-
 		print(f"at={at}")
 
+		i = 4 if ( 0 <= qd * wr ) else 0
 		if am < abs(at) :
 			res[i+1] = [wd, abs(am*wd - ab)/jm]
 			res[i+2] = [0.0, (at**2 - am**2)/(am*jm)]
@@ -253,14 +226,7 @@ class TrajBang3() :
 			res[i+1] = [wd, ad / jm]
 			res[i+3] = [-wd, ad / jm]
 
-			# res[i+1] = [wd, ad / jm]
-			# res[i+3] = [-wd, ad / jm]
-
-		#else :
-		#	ad, wd = 0.0, 0.0
-
 		return res
-
 
 if __name__ == '__main__' :
 

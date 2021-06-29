@@ -1,109 +1,338 @@
 #!/usr/bin/env python3
 
-import math
+""" dans cette version on a également une accélération Ag """
 
-import sympy
+import itertools
+import math
+import random
+import sys
+import time
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+from cc_pathlib import Path
+
+check_tolerance = 1e-6
+
+
+def split_value_sign(a) :
+	return abs(a), math.copysign(1.0, a)
+
+def k(e) :
+		return "\x1b[32mOK\x1b[0m" if e else "\x1b[31mKO\x1b[0m"
+
+def c(e) :
+	if 0 < e :
+		return '+'
+	elif e < 0 :
+		return '-'
+	else :
+		return '0'
 
 class TrajBang3() :
 
-	tolerance = 1e-6
+	mini_m = 0.1
+	check_tolerance = 1e-6
 
-	def __init__(self, jm, am, a0, s0, sg) :
-		self.jm, self.am, self.a0, self.s0, self.sg = abs(jm), abs(am), a0, s0, sg
+	def __init__(self, jm: float, am: float, debug=False) :
+		self.jm, self.am = abs(jm), abs(am)
 
-		if abs(self.am) < self.tolerance :
-			raise ValueError("Maximal acceleration can not be null")
+		if abs(self.am) < self.mini_m :
+			raise ValueError(f"Maximal acceleration can not be less than {self.mini_m}")
 
-		if abs(self.jm) < self.tolerance :
-			raise ValueError("Maximal acceleration can not be null")
+		if abs(self.jm) < self.mini_m :
+			raise ValueError(f"Maximal jerk can not be less than {self.mini_m}")
 
-	def check(self) :
+		self.debug = debug
 
-		jm, am, a0, s0, sg = self.jm, self.am, self.a0, self.s0, self.sg
+	def __prep__(self, a0: float, s0: float, ag: float, sg: float) :
+		self.a0, self.s0, self.ag, self.sg = a0, s0, max(-self.am, min(ag, self.am)), sg
+		self.res = np.zeros((8, 2))
 
-		def k(e) :
-				return "\x1b[32mOK\x1b[0m" if e else "\x1b[31mKO\x1b[0m"
-		def isclose(a, b) :
-			return abs(a - b) < self.tolerance
+		return self.jm, self.am, self.a0, self.s0, self.ag, self.sg
+
+	def check_is_inside(self, a, low, high) :
+		return low - self.check_tolerance <= a <= high + self.check_tolerance
+
+	def check_is_close(self, a, b) :
+		return abs(a - b) <= self.check_tolerance
+
+	@property
+	def val(self) :
+		return { 'J_m': self.jm, 'A_m': self.am, 'A_0': self.a0, 'S_0': self.s0, 'A_g': self.ag, 'S_g': self.sg, }
+
+	def integrate(self, res) :
+		jm, am, a0, s0, ag, sg = self.jm, self.am, self.a0, self.s0, self.ag, self.sg
+
+		cmd = [cmd for cmd, dur in res]
+		dur = [dur for cmd, dur in res]
+
+		n = len(dur)
+
+		T = list()
+		J = list()
+		A = [a0,]
+		S = [s0,]
+		D = [0.0,]
+
+		for i in range( len(dur) ) :
+			T.append(dur[i])
+			J.append(cmd[i] * jm)
+			A.append( (A[-1] + J[i] * T[i]) )
+			S.append( (S[-1] + A[i] * T[i] + J[i] * T[i]**2 / 2) )
+			D.append( (D[-1] + S[i] * T[i] + A[i] * T[i]**2 / 2 + J[i] * T[i]**3 / 6) )
+
+		self.cmd, self.dur, self.T, self.J, self.A, self.S, self.D = cmd, dur, T, J, A, S, D
+
+		return cmd, dur, T, J, A, S, D
+
+	@property
+	def title(self) :
+		jm, am, a0, s0, ag, sg = self.jm, self.am, self.a0, self.s0, self.ag, self.sg
+		return f"TrajBang3(jm={jm}, am={am}, a0={a0}, s0={s0}, ag={ag}, sg={sg})"
+
+	def plot(self, result_dir=None) :
+		jm, am, a0, s0, ag, sg = self.jm, self.am, self.a0, self.s0, self.ag, self.sg
+		cmd, dur, T, J, A, S, D = self.cmd, self.dur, self.T, self.J, self.A, self.S, self.D
+
+		plt.figure()
+		plt.subplot(4, 1, 1)
+		plt.step(T, J)
+		plt.subplot(4, 1, 2)
+		plt.plot(T, A)
+		plt.subplot(4, 1, 3)
+		plt.plot(T, S)
+		plt.subplot(4, 1, 4)
+		plt.plot(T, D)
+		if result_dir is None :
+			plt.show()
+		else :
+			plt.savefig(result_dir / f"{self.title}.png")
+
+	def status(self) :
+		jm, am, a0, s0, ag, sg = self.jm, self.am, self.a0, self.s0, self.ag, self.sg
+		cmd, dur, T, J, A, S, D = self.cmd, self.dur, self.T, self.J, self.A, self.S, self.D
+		print("cmd :", ' '.join(f"{i:7.3g}" for i in cmd))
+		print("dur :", ' '.join(f"{i:7.3g}" for i in dur))
+		print("-" * 4)
+		print("  T :", ' '.join(f"{i:7.3g}" for i in ([0.0,] + list(itertools.accumulate(T)))))
+		print("  A :", ' '.join(f"{i:7.3g}" for i in A + [ag,]))
+		print("  S :", ' '.join(f"{i:7.3g}" for i in S + [sg,]))
+		print("  D :", ' '.join(f"{i:7.3g}" for i in D))
+
+	def check(self, a0: float, s0: float, ag: float, sg: float, result_dir=None) :
+		jm, am, a0, s0, ag, sg = self.__prep__(a0, s0, ag, sg)
+
+		val = self.val
+
 		def f(e) :
 			try :
 				return float(e.subs(val))
 			except AttributeError :
 				return float(e)
 
-		cmd, dur, bch = self.compute()
+		res = self.compute(a0, s0, ag, sg)
 
-		valid_condition = bch != 'Z'
+		cmd, dur, T, J, A, S, D = self.integrate(res)
 
-		val = { 'J_m': jm, 'A_m': am, 'A_0': a0, 'S_0': s0, 'S_g': sg, }
+		# check all acceleration values are inside the limits (except a0 which can be out of bounds)
+		ai_condition = all(self.check_is_inside(f(i), -am, am) for i in A[1:] )
 
-		n = len(dur)
-		T, J, A, S = self.equation(n)
-		for i in range(n) :
-			val[f"T_{i}"] = dur[i]
-			val[f"J_{i}"] = cmd[i] * val['J_m']
+		ag_condition = self.check_is_close(f(A[-1]), ag)
+		sg_condition = self.check_is_close(f(S[-1]), sg)
 
-		ag_condition = isclose(A[-1].subs(val), 0.0)
-		ai_condition = all( ((-am - self.tolerance) <= i.subs(val) <= (am + self.tolerance)) for i in A[1:] )
-		sg_condition = isclose(S[-1].subs(val), sg)
+		total_condition = ag_condition and ai_condition and sg_condition
 
-		total_condition = ag_condition and ai_condition and sg_condition and valid_condition
+		print(f"TrajBang3(jm={jm}, am={am}, a0={a0}, s0={s0}, ag={ag}, sg={sg}) ==>", k( total_condition ))
 
-		if not ( total_condition ) :
-			print(f"TrajBang3({jm}, {am}, {a0}, {s0}, {sg}) ==>", cmd, dur, bch, k( total_condition ))
-			print('  >', "A", [f(i) for i in A], k(ag_condition), k(ai_condition))
-			print('  >', "S", [f(i) for i in S], k(sg_condition))
+		print("> cmd :", '\t'.join(f"{i:5g}" for i in cmd))
+		print("> dur :", '\t'.join(f"{i:5g}" for i in dur))
+		print("-" * 4)
+		print("  > T :", '\t'.join(f"{i:5g}" for i in ([0.0,] + list(itertools.accumulate(T)))))
+		print("  > A :", '\t'.join(f"{i:5g}" for i in A), f" \t=( {ag} )>", k(ag_condition), k(ai_condition))
+		print("  > S :", '\t'.join(f"{i:5g}" for i in S), f" \t=( {sg} )>", k(sg_condition))
+		print("  > D :", '\t'.join(f"{i:5g}" for i in D))
 
-	def equation(self, n) :
+		if not total_condition :
+			with Path('error_listing.log').open('at') as fid :
+				fid.write(f"\n{self.title} ==>\n\t{cmd}\n\t{dur}\n")
 
-	    T = list()
-	    J = list()
-	    A = [sympy.symbols('A_0'),]
-	    S = [sympy.symbols('S_0'),]
-	    
-	    for i in range(n) :
-	        T.append(sympy.symbols(f"T_{i}"))
-	        J.append(sympy.symbols(f"J_{i}"))
-	        A.append( (A[-1] + J[i] * T[i]).simplify() )
-	        S.append( (S[-1] + A[i] * T[i] + J[i] * T[i]**2 / 2).simplify() )
-	       
-	    return T, J, A, S
+	def get_q(self, a_from, a_to) :
+		m, w = split_value_sign(a_to - a_from)
+		t = m / self.jm
+		q = (a_to + a_from) * t / 2
+		return q, t, w
 
-	def compute(self) :
+	def compute(self, a0: float, s0: float, ag: float, sg: float) :
 
-		jm, am, a0, s0, sg = self.jm, self.am, self.a0, self.s0, self.sg
-		
-		# 1 step
-		k = 1.0 if 0 <= (sg - s0) else -1.0
-		if (a0**2) / (2*k*jm) + s0 == sg :
-			return [-k], [(a0) / (k*jm)], 'A'
+		jm, am, a0, s0, ag, sg = self.__prep__(a0, s0, ag, sg)
+		res = self.res
 
-		# 2 steps
-		for k in [-1, 1] :
-			m = (a0**2 / 2) + k*jm*(sg - s0)
-			if 0 <= m :
-				q = math.sqrt(m)
-				d0 = (-a0 + k*q) / (k*jm)
-				d1 = (q) / (jm)
-				if 0 <= d0 and 0 <= d1 and q <= am :
-					return [k, -k], [ d0, d1 ], 'B' + '+' if 0 < k else '-' 
+		# computation of the initial segment, from A0 to Ap the closest of either Am or -Am
+		ap = max(-am, min(a0, am))
+		qi, ti, wi = self.get_q(a0, ap)
 
-		# 3 steps
-		for k in [-1, 1] :
-			c0 = math.copysign(1.0, k*am - a0)
-			d0 = (k*am - a0) / (c0*jm)
-			s01 = d0*(a0+k*am) / 2
+		res[0] = [wi, ti]
+		if self.debug :
+			print(f"qi={qi} ti={ti} wi={wi} ap={ap}")
 
-			c2 = math.copysign(1.0, -k*am)
-			d2 = (-k*am)/(c2*jm)
-			s23 = d2*(k*am) / 2
+		#computation of the final segment, from Ap to Ag
+		qr, tr, wr = self.get_q(ap, ag)
 
-			s12 = sg - s01 - s23 - s0
-			d1 = s12 / (k*am)
+		res[4] = [wr, tr]
+		if self.debug :
+			print(f"qr={qr} tr={tr} wr={wr}")
 
-			if 0.0 <= d1 :
-				return [c0, 0, c2], [d0, d1, d2], 'C' + '+' if 0 < k else '-'
+		# computation of Qd the remaining part to go from S0 to Sg without the initial and final segments
+		qd = sg - s0 - qi - qr
+		if self.debug :
+			print(f"qd={qd}")
 
-		return [0, 0, 0], [0, 0, 0], 'Z'
+		ab = ag if ( 0 <= qd * wr ) else ap
+		if self.debug :
+			print(f"ab={ab}")
+
+		# if Qd != 0.0 we need to compute the remaining command
+		wd = math.copysign(1.0, qd)
+
+		de = ab**2 + jm*abs(qd)
+		ad_1 = ( -ab + math.sqrt(de) ) * wd
+		ad_2 = ( -ab - math.sqrt(de) ) * wd
+		ad = ad_1 if 0 <= ad_1 else ad_2
+		if self.debug :
+			print(f"ad_1={ad_1} ad_2={ad_2} ad={ad} wd={wd}")
+
+		at = ab + ad*wd
+		if self.debug :
+			print(f"at={at}")
+
+		i = 4 if ( 0 <= qd * wr ) else 0
+		if am < abs(at) :
+			res[i+1] = [wd, abs(am*wd - ab)/jm]
+			res[i+2] = [0.0, (at**2 - am**2)/(am*jm)]
+			res[i+3] = [-wd, abs(am*wd - ab)/jm]
+		else :
+			res[i+1] = [wd, ad / jm]
+			res[i+3] = [-wd, ad / jm]
+
+		return res
+
+if __name__ == '__main__' :
+
+	result_lst = [
+		[6, 20],
+		[0, 20],
+		[-6, 20]
+	]
+	u = TrajBang3(1.4, 3.7, 0, 0, 0, 8, 0.08)
+	sys.exit(0)
+	u.integrate(result_lst, True)
+	sys.exit(0)
+
+	# TrajBang3(jm=20, am=8, a0=53, s0=-93, ag=4, sg=-24).check()
+	# TrajBang3(jm=1, am=2, a0=3, s0=0, ag=1, sg=2.75).check()
+	# TrajBang3(jm=1, am=2, a0=3, s0=0, ag=1, sg=-0.5).check()
+	# TrajBang3(jm=30, am=45, a0=40, s0=-15, ag=5, sg=-35).check()
+	TrajBang3(1, 2, 0, 0, 0, 8).check()
+	# TrajBang3(1, 2, 0, 0, 0, 3).check()
+	sys.exit(0)
+
+	TrajBang3(1, 2, 3, 0, 1, -0.5).check()
+	# TrajBang3(jm=6, am=9, a0=8, s0=-3, ag=1, sg=-7).check()
+
+	
+	test_vec = [
+		[1, 2, 0, 0, 0, 9],
+		[1, 2, 1, -0.5, 0, 0],
+		[1, 1, 0.5, 0, 0, 0.5],
+		[1, 1, 0.5, 0, 0, 0.5],
+		[1, 1, 0.5, 0, 0, 0.5],
+		[1, 1, 0.5, 0, 0, 0.5],
+		[1, 1, 0, 0, 0, 0.5],
+		[1, 1, 0, 0, 0, 0.5],
+		[1, 1, 0, 0, 0, 2],
+		[1, 1, 0, 0, 0, -2],
+		[1, 1, -0.25, 0, 0, -2],
+		[1, 1, 0.25, 0, 0, 2],
+		[1, 1, 0.75, 0, 0, -2],
+		[1, 1, -0.75, 0, 0, 2],
+		[1, 2.0, -1.0, -2.0, 0, 4.0],
+		[1, 2, 0, 0, 0, 6],
+		[1, 2, 3, -2, 0, 3],
+		[1, 2, 3, -2, 0, 6],
+		[1, 2, 3, 0, -1, 2],
+		[1, 2, 0, 0, 0, 10],
+		[1, 2, 0, 0, 0, 9],
+		[1, 2, 3, 0, 1, 2.75],
+		[1, 2, 3, 0, 1, -0.5]
+	]
+
+	for vec in test_vec :
+		TrajBang3(* vec).check()
+	sys.exit(0)
+
+	m = 128.0
+	while True:	
+		jm = round(random.uniform(0.1, m), 1)
+		am = round(random.uniform(0.1, m), 1)
+		a0 = round(random.uniform(-m, m), 1)
+		s0 = round(random.uniform(-m, m), 1)
+		ag = round(random.uniform(-am, am), 1)
+		sg = round(random.uniform(-m, m), 1)
+
+		TrajBang3(jm, am, a0, s0, ag, sg).check()
+
+	sys.exit()
 
 
+
+	def print_debug(u) :
+		if '' in u :
+			cmd, dur, res = u['']
+			print((f"\x1b[32m" if res else f"\x1b[31m") + f"None\t:\x1b[0m {cmd} {dur}")
+
+		for i in ['+0', '-0', '0+', '0-', '+-', '-+'] :
+			if i in u :
+				cmd, dur, res = u[i]
+				print((f"\x1b[32m{i}" if res else f"\x1b[31m{i}") + f"\t:\x1b[0m {cmd} {dur}")
+			else :
+				print(f"\x1b[34m{i}\t: not computed\x1b[0m")
+
+		for i in u :
+			if len(i) == 3 :
+				cmd, dur, res = u[i]
+				print((f"\x1b[32m{i}" if res else f"\x1b[31m{i}") + f"\t:\x1b[0m {cmd} {dur}")
+
+
+	u, v = TrajBang3(1, 3, 0, 3, -2, 2).compute_debug()
+	print(v)
+	print_debug(u)
+	sys.exit(0)
+
+	# TrajBang3(1, 2, 0, 0, 0, 6).check()
+	# TrajBang3(1, 2, 0, 0, 0, -6).check()
+
+	# # TrajBang3(1.0, 2.0, 2.0, 0.0, -1.0, -2.0).check()
+	# # sys.exit(0)
+
+	# TrajBang3(3, 3, 2, 0.0, -2, -2).check()
+	# sys.exit(0)
+
+	# TrajBang3(3.2, 3.4, 2.3, 0.3, -2.3, -1.7).check()
+
+	import random
+
+	random.seed(0)
+	while True :
+
+		jm = random.randint(5, 35) / 10.0
+		am = random.randint(10, 50) / 10.0
+		a0 = random.randint(-25, 25) / 10.0
+		s0 = random.randint(-50, 50) / 10.0
+		ag = random.randint(-25, 25) / 10.0
+		sg = random.randint(-50, 50) / 10.0
+
+		TrajBang3(jm, am, a0, s0, ag, sg).check()
+
+		time.sleep(0.5)
