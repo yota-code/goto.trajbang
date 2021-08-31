@@ -277,6 +277,7 @@ int tb3_STATIC_solve_poly3(double a, double b, double c, double d, double comple
 
 }
 
+
 int tb3__print__(tb3_C * self) {
 
 	fprintf(stderr, "jm=%.3g am=%.3g a0=%.3g s0=%.3g ag=%.3g sg=%.3g\n\n", self->jm, self->am, self->a0, self->s0, self->ag, self->sg);
