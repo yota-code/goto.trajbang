@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 
-""" dans cette version on a également une accélération Ag """
-
 import itertools
 import math
 import random
@@ -10,26 +8,30 @@ import time
 
 import numpy as np
 import matplotlib.pyplot as plt
+import sympy
 
 from cc_pathlib import Path
-
-check_tolerance = 1e-6
 
 def split_value_sign(a) :
 	return abs(a), math.copysign(1.0, a) if a != 0.0 else 0.0
 
-def k(e) :
-		return "\x1b[32mOK\x1b[0m" if e else "\x1b[31mKO\x1b[0m"
-
-def c(e) :
-	if 0 < e :
-		return '+'
-	elif e < 0 :
-		return '-'
+def sign_of(a) :
+	if a > 0 :
+		return 1
+	elif a < 0 :
+		return -1
 	else :
-		return '0'
+		return 0
+	
 
-class TrajBang3() :
+def sym_eval(e, v) :
+	try :
+		return float(e.subs(v))
+	except AttributeError :
+		return float(e)
+
+
+class Trajectory() :
 
 	mini_m = 0.1
 	check_tolerance = 1e-6
@@ -45,7 +47,7 @@ class TrajBang3() :
 
 		self.debug = debug
 
-	def __prep__(self, a0: float, s0: float, ag: float, sg: float) :
+	def _prepare(self, a0: float, s0: float, ag: float, sg: float) :
 		self.a0, self.s0, self.ag, self.sg = a0, s0, max(-self.am, min(ag, self.am)), sg
 		self.res = np.zeros((8, 2))
 
@@ -61,41 +63,31 @@ class TrajBang3() :
 	def val(self) :
 		return { 'J_m': self.jm, 'A_m': self.am, 'A_0': self.a0, 'S_0': self.s0, 'A_g': self.ag, 'S_g': self.sg, }
 
-	def integrate(self, res) :
-		jm, am, a0, s0, ag, sg = self.jm, self.am, self.a0, self.s0, self.ag, self.sg
+	@staticmethod
+	def _integrate_sym(length=3) :
+		""" symbol integration """
+		Jm, Am, A0, S0, T = sympy.symbols('J_m A_m A_0 S_0 T')
 
-		cmd = [cmd for cmd, dur in res]
-		dur = [dur for cmd, dur in res]
+		T = sympy.symbols(' '.join(f'T_{i}' for i in range(length)))
+		J = sympy.symbols(' '.join(f'J_{i}' for i in range(length)))
 
-		n = len(dur)
-
-		T = list()
-		J = list()
-		A = [a0,]
-		S = [s0,]
-		D = [0.0,]
-
-		for i in range( len(dur) ) :
-			T.append(dur[i])
-			J.append(cmd[i] * jm)
+		A = [A0,]
+		S = [S0,]
+		D = [0,]
+		for i in range(length) :
 			A.append( (A[-1] + J[i] * T[i]) )
 			S.append( (S[-1] + A[i] * T[i] + J[i] * T[i]**2 / 2) )
 			D.append( (D[-1] + S[i] * T[i] + A[i] * T[i]**2 / 2 + J[i] * T[i]**3 / 6) )
 
-		self.cmd, self.dur, self.T, self.J, self.A, self.S, self.D = cmd, dur, T, J, A, S, D
+		return A, S, D
 
-		return cmd, dur, T, J, A, S, D
-
-	def integrate(self) :
+	def _integrate_num(self) :
 		""" numerical integration """
+
 		jm, am, a0, s0, ag, sg = self.jm, self.am, self.a0, self.s0, self.ag, self.sg
+		t0, d0 = 0.0, 0.0
 
 		self.poly = { k : list() for k in ['T', 'A', 'S', 'D'] }
-
-		t0, a0, s0, d0 = 0.0, self.a0, self.s0, 0.0
-		# a1, a0 = 0.0, self.a0
-		# s2, s1, s0 = 0.0, 0.0, self.s0
-		# d3, d2, d1, d0 = 0.0, 0.0, 0.0, 0.0
 
 		self.poly['T'].append(t0)
 		
@@ -103,7 +95,7 @@ class TrajBang3() :
 			t = dur
 			self.poly['T'].append(self.poly['T'][-1] + t)
 
-			a1 = cmd
+			a1 = cmd * jm
 			self.poly['A'].append([a1, a0])
 
 			s2 = a1 / 2.0
@@ -173,7 +165,7 @@ class TrajBang3() :
 		if result_dir is None :
 			plt.show()
 		else :
-			plt.savefig(result_dir / f"{self.title}.png")
+			plt.savefig(result_dir / f"{self.title}.png")		
 
 	def status(self) :
 		jm, am, a0, s0, ag, sg = self.jm, self.am, self.a0, self.s0, self.ag, self.sg
@@ -187,7 +179,7 @@ class TrajBang3() :
 		print("  D :", ' '.join(f"{i:7.3g}" for i in D))
 
 	def check(self, a0: float, s0: float, ag: float, sg: float, result_dir=None) :
-		jm, am, a0, s0, ag, sg = self.__prep__(a0, s0, ag, sg)
+		jm, am, a0, s0, ag, sg = self._prepare(a0, s0, ag, sg)
 
 		val = self.val
 
@@ -199,7 +191,7 @@ class TrajBang3() :
 
 		res = self.compute(a0, s0, ag, sg)
 
-		cmd, dur, T, J, A, S, D = self.integrate(res)
+		cmd, dur, T, J, A, S, D = self._integrate_sym(res)
 
 		# check all acceleration values are inside the limits (except a0 which can be out of bounds)
 		ai_condition = all(self.check_is_inside(f(i), -am, am) for i in A[1:] )
@@ -231,14 +223,13 @@ class TrajBang3() :
 
 	def compute(self, a0: float, s0: float, ag: float, sg: float) :
 
-		jm, am, a0, s0, ag, sg = self.__prep__(a0, s0, ag, sg)
-		res = self.res
+		jm, am, a0, s0, ag, sg = self._prepare(a0, s0, ag, sg)
 
 		# computation of the initial segment, from A0 to Ap the closest of either Am or -Am
 		ap = max(-am, min(a0, am))
 		qi, ti, wi = self.get_q(a0, ap)
 
-		res[0] = [wi, ti]
+		self.res[0] = [wi, ti]
 		if self.debug :
 			print(f"ap={ap}")
 			print(f"qi={qi} ti={ti} wi={wi}")
@@ -246,7 +237,7 @@ class TrajBang3() :
 		#computation of the final segment, from Ap to Ag
 		qr, tr, wr = self.get_q(ap, ag)
 
-		res[4] = [wr, tr]
+		self.res[4] = [wr, tr]
 		if self.debug :
 			print(f"qr={qr} tr={tr} wr={wr}")
 
@@ -275,138 +266,19 @@ class TrajBang3() :
 
 		i = 4 if ( 0 <= qd * wr ) else 0
 		if am < abs(at) :
-			res[i+1] = [wd, abs(am*wd - ab)/jm]
-			res[i+2] = [0.0, (at**2 - am**2)/(am*jm)]
-			res[i+3] = [-wd, abs(am*wd - ab)/jm]
+			self.res[i+1] = [wd, abs(am*wd - ab)/jm]
+			self.res[i+2] = [0.0, (at**2 - am**2)/(am*jm)]
+			self.res[i+3] = [-wd, abs(am*wd - ab)/jm]
 		else :
-			res[i+1] = [wd, ad / jm]
-			res[i+3] = [-wd, ad / jm]
+			self.res[i+1] = [wd, ad / jm]
+			self.res[i+3] = [-wd, ad / jm]
 
 		self.sol = list()
-		for cmd, dur in res :
+		for cmd, dur in self.res :
 			print(f"{cmd}\t{dur}")
 			if dur > 0.0 :
-				self.sol.append([cmd * self.jm, dur])
+				self.sol.append([cmd, dur])
 
-		self.integrate()
+		self._integrate_num()
 
 		return self
-
-if __name__ == '__main__' :
-
-	result_lst = [
-		[6, 20],
-		[0, 20],
-		[-6, 20]
-	]
-	u = TrajBang3(1.4, 3.7, 0, 0, 0, 8, 0.08)
-	sys.exit(0)
-	u.integrate(result_lst, True)
-	sys.exit(0)
-
-	# TrajBang3(jm=20, am=8, a0=53, s0=-93, ag=4, sg=-24).check()
-	# TrajBang3(jm=1, am=2, a0=3, s0=0, ag=1, sg=2.75).check()
-	# TrajBang3(jm=1, am=2, a0=3, s0=0, ag=1, sg=-0.5).check()
-	# TrajBang3(jm=30, am=45, a0=40, s0=-15, ag=5, sg=-35).check()
-	TrajBang3(1, 2, 0, 0, 0, 8).check()
-	# TrajBang3(1, 2, 0, 0, 0, 3).check()
-	sys.exit(0)
-
-	TrajBang3(1, 2, 3, 0, 1, -0.5).check()
-	# TrajBang3(jm=6, am=9, a0=8, s0=-3, ag=1, sg=-7).check()
-
-	
-	test_vec = [
-		[1, 2, 0, 0, 0, 9],
-		[1, 2, 1, -0.5, 0, 0],
-		[1, 1, 0.5, 0, 0, 0.5],
-		[1, 1, 0.5, 0, 0, 0.5],
-		[1, 1, 0.5, 0, 0, 0.5],
-		[1, 1, 0.5, 0, 0, 0.5],
-		[1, 1, 0, 0, 0, 0.5],
-		[1, 1, 0, 0, 0, 0.5],
-		[1, 1, 0, 0, 0, 2],
-		[1, 1, 0, 0, 0, -2],
-		[1, 1, -0.25, 0, 0, -2],
-		[1, 1, 0.25, 0, 0, 2],
-		[1, 1, 0.75, 0, 0, -2],
-		[1, 1, -0.75, 0, 0, 2],
-		[1, 2.0, -1.0, -2.0, 0, 4.0],
-		[1, 2, 0, 0, 0, 6],
-		[1, 2, 3, -2, 0, 3],
-		[1, 2, 3, -2, 0, 6],
-		[1, 2, 3, 0, -1, 2],
-		[1, 2, 0, 0, 0, 10],
-		[1, 2, 0, 0, 0, 9],
-		[1, 2, 3, 0, 1, 2.75],
-		[1, 2, 3, 0, 1, -0.5]
-	]
-
-	for vec in test_vec :
-		TrajBang3(* vec).check()
-	sys.exit(0)
-
-	m = 128.0
-	while True:	
-		jm = round(random.uniform(0.1, m), 1)
-		am = round(random.uniform(0.1, m), 1)
-		a0 = round(random.uniform(-m, m), 1)
-		s0 = round(random.uniform(-m, m), 1)
-		ag = round(random.uniform(-am, am), 1)
-		sg = round(random.uniform(-m, m), 1)
-
-		TrajBang3(jm, am, a0, s0, ag, sg).check()
-
-	sys.exit()
-
-
-
-	def print_debug(u) :
-		if '' in u :
-			cmd, dur, res = u['']
-			print((f"\x1b[32m" if res else f"\x1b[31m") + f"None\t:\x1b[0m {cmd} {dur}")
-
-		for i in ['+0', '-0', '0+', '0-', '+-', '-+'] :
-			if i in u :
-				cmd, dur, res = u[i]
-				print((f"\x1b[32m{i}" if res else f"\x1b[31m{i}") + f"\t:\x1b[0m {cmd} {dur}")
-			else :
-				print(f"\x1b[34m{i}\t: not computed\x1b[0m")
-
-		for i in u :
-			if len(i) == 3 :
-				cmd, dur, res = u[i]
-				print((f"\x1b[32m{i}" if res else f"\x1b[31m{i}") + f"\t:\x1b[0m {cmd} {dur}")
-
-
-	u, v = TrajBang3(1, 3, 0, 3, -2, 2).compute_debug()
-	print(v)
-	print_debug(u)
-	sys.exit(0)
-
-	# TrajBang3(1, 2, 0, 0, 0, 6).check()
-	# TrajBang3(1, 2, 0, 0, 0, -6).check()
-
-	# # TrajBang3(1.0, 2.0, 2.0, 0.0, -1.0, -2.0).check()
-	# # sys.exit(0)
-
-	# TrajBang3(3, 3, 2, 0.0, -2, -2).check()
-	# sys.exit(0)
-
-	# TrajBang3(3.2, 3.4, 2.3, 0.3, -2.3, -1.7).check()
-
-	import random
-
-	random.seed(0)
-	while True :
-
-		jm = random.randint(5, 35) / 10.0
-		am = random.randint(10, 50) / 10.0
-		a0 = random.randint(-25, 25) / 10.0
-		s0 = random.randint(-50, 50) / 10.0
-		ag = random.randint(-25, 25) / 10.0
-		sg = random.randint(-50, 50) / 10.0
-
-		TrajBang3(jm, am, a0, s0, ag, sg).check()
-
-		time.sleep(0.5)

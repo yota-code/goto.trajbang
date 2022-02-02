@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
 
-export GOTO_source_DIR=$0:A:h
+export GOTO_source_DIR=${0:A:h}
 
 function push_pythonpath() {
 	pth=$1:A

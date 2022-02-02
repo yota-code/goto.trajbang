@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from trajbang.trajbang3 import TrajBang3
+import goto.trajbang.tb3
 
 test_vec = [
 	[1, 2, 0, 0, 0, 9],
@@ -29,5 +29,5 @@ test_vec = [
 ]
 
 for jm, am, a0, s0, ag, sg in test_vec :
-	u = TrajBang3(jm, am, True)
+	u = goto.trajbang.tb3.Trajectory(jm, am, True)
 	u.check(a0, s0, ag, sg)
