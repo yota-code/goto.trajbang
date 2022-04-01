@@ -31,9 +31,12 @@ def sym_eval(e, v) :
 		return float(e)
 
 
-class Trajectory() :
+def symbolic_integration(depth='JSA', length=3) :
+	pass
 
-	mini_m = 0.1
+class Tb3Compute() :
+
+	mini_m = 0.001
 	check_tolerance = 1e-6
 
 	def __init__(self, jm: float, am: float, debug=False) :
@@ -49,8 +52,6 @@ class Trajectory() :
 
 	def _prepare(self, a0: float, s0: float, ag: float, sg: float) :
 		self.a0, self.s0, self.ag, self.sg = a0, s0, max(-self.am, min(ag, self.am)), sg
-		self.res = np.zeros((8, 2))
-
 		return self.jm, self.am, self.a0, self.s0, self.ag, self.sg
 
 	def check_is_inside(self, a, low, high) :
@@ -60,11 +61,15 @@ class Trajectory() :
 		return abs(a - b) <= self.check_tolerance
 
 	@property
+	def duration(self) :
+		return sum(dur for cmd, dur in self.sol)
+
+	@property
 	def val(self) :
 		return { 'J_m': self.jm, 'A_m': self.am, 'A_0': self.a0, 'S_0': self.s0, 'A_g': self.ag, 'S_g': self.sg, }
 
 	@staticmethod
-	def _integrate_sym(length=3) :
+	def symbolic_expression(length=3) :
 		""" symbol integration """
 		Jm, Am, A0, S0, T = sympy.symbols('J_m A_m A_0 S_0 T')
 
@@ -138,7 +143,6 @@ class Trajectory() :
 				s2, s1, s0 = self.poly['S'][i]
 				d3, d2, d1, d0 = self.poly['D'][i]
 				return (
-					a1,
 					a1 * t + a0,
 					s2 * t**2 + s1 * t + s0,
 					d3 * t**3 + d2 * t**2 + d1 * t + d0
@@ -151,7 +155,7 @@ class Trajectory() :
 
 	def plot(self, result_dir=None) :
 		jm, am, a0, s0, ag, sg = self.jm, self.am, self.a0, self.s0, self.ag, self.sg
-		cmd, dur, T, J, A, S, D = self.cmd, self.dur, self.T, self.J, self.A, self.S, self.D
+		cmd, dur, J, A, S, D = self.cmd, self.dur, self.J, self.A, self.S, self.D
 
 		plt.figure()
 		plt.subplot(4, 1, 1)
@@ -169,14 +173,14 @@ class Trajectory() :
 
 	def status(self) :
 		jm, am, a0, s0, ag, sg = self.jm, self.am, self.a0, self.s0, self.ag, self.sg
-		cmd, dur, T, J, A, S, D = self.cmd, self.dur, self.T, self.J, self.A, self.S, self.D
-		print("cmd :", ' '.join(f"{i:7.3g}" for i in cmd))
-		print("dur :", ' '.join(f"{i:7.3g}" for i in dur))
-		print("-" * 4)
-		print("  T :", ' '.join(f"{i:7.3g}" for i in ([0.0,] + list(itertools.accumulate(T)))))
-		print("  A :", ' '.join(f"{i:7.3g}" for i in A + [ag,]))
-		print("  S :", ' '.join(f"{i:7.3g}" for i in S + [sg,]))
-		print("  D :", ' '.join(f"{i:7.3g}" for i in D))
+
+		print("cmd :", ' '.join(f"{cmd:7.3g}" for cmd, dur in self.sol))
+		print("dur :", ' '.join(f"{dur:7.3g}" for cmd, dur in self.sol))
+		# print("-" * 4)
+		# print("  T :", ' '.join(f"{i:7.3g}" for i in ([0.0,] + list(itertools.accumulate(T)))))
+		# print("  A :", ' '.join(f"{i:7.3g}" for i in A + [ag,]))
+		# print("  S :", ' '.join(f"{i:7.3g}" for i in S + [sg,]))
+		# print("  D :", ' '.join(f"{i:7.3g}" for i in D))
 
 	def check(self, a0: float, s0: float, ag: float, sg: float, result_dir=None) :
 		jm, am, a0, s0, ag, sg = self._prepare(a0, s0, ag, sg)
@@ -221,34 +225,28 @@ class Trajectory() :
 		q = (a_to + a_from) * t / 2
 		return q, t, w
 
-	def compute(self, a0: float, s0: float, ag: float, sg: float) :
+	def run(self, a0, s0, ag, sg) :
+		self._prepare(a0, s0, ag, sg)
+		self._compute()
 
-		jm, am, a0, s0, ag, sg = self._prepare(a0, s0, ag, sg)
+	def _compute(self, a0, s0, ag, sg) :
+
+		r_lst = [[0, 0] for i in range(8)]
+
+		jm, am = self.jm, self.am
 
 		# computation of the initial segment, from A0 to Ap the closest of either Am or -Am
 		ap = max(-am, min(a0, am))
 		qi, ti, wi = self.get_q(a0, ap)
-
-		self.res[0] = [wi, ti]
-		if self.debug :
-			print(f"ap={ap}")
-			print(f"qi={qi} ti={ti} wi={wi}")
+		r_lst[0] = [wi, ti]
 
 		#computation of the final segment, from Ap to Ag
 		qr, tr, wr = self.get_q(ap, ag)
-
-		self.res[4] = [wr, tr]
-		if self.debug :
-			print(f"qr={qr} tr={tr} wr={wr}")
+		r_lst[4] = [wr, tr]
 
 		# computation of Qd the remaining part to go from S0 to Sg without the initial and final segments
 		qd = sg - s0 - qi - qr
-		if self.debug :
-			print(f"qd={qd}")
-
 		ab = ag if ( 0 <= qd * wr ) else ap
-		if self.debug :
-			print(f"ab={ab}")
 
 		# if Qd != 0.0 we need to compute the remaining command
 		wd = math.copysign(1.0, qd)
@@ -257,28 +255,25 @@ class Trajectory() :
 		ad_1 = ( -ab + math.sqrt(de) ) * wd
 		ad_2 = ( -ab - math.sqrt(de) ) * wd
 		ad = ad_1 if 0 <= ad_1 else ad_2
-		if self.debug :
-			print(f"ad_1={ad_1} ad_2={ad_2} ad={ad} wd={wd}")
 
 		at = ab + ad*wd
-		if self.debug :
-			print(f"at={at}")
 
 		i = 4 if ( 0 <= qd * wr ) else 0
 		if am < abs(at) :
-			self.res[i+1] = [wd, abs(am*wd - ab)/jm]
-			self.res[i+2] = [0.0, (at**2 - am**2)/(am*jm)]
-			self.res[i+3] = [-wd, abs(am*wd - ab)/jm]
+			r_lst[i+1] = [wd, abs(am*wd - ab)/jm]
+			r_lst[i+2] = [0.0, (at**2 - am**2)/(am*jm)]
+			r_lst[i+3] = [-wd, abs(am*wd - ab)/jm]
 		else :
-			self.res[i+1] = [wd, ad / jm]
-			self.res[i+3] = [-wd, ad / jm]
+			r_lst[i+1] = [wd, ad / jm]
+			r_lst[i+3] = [-wd, ad / jm]
 
-		self.sol = list()
-		for cmd, dur in self.res :
-			print(f"{cmd}\t{dur}")
-			if dur > 0.0 :
-				self.sol.append([cmd, dur])
+		# if debug :
+		# 	print(f"ap={ap}")
+		# 	print(f"qi={qi} ti={ti} wi={wi}")
+		# 	print(f"qr={qr} tr={tr} wr={wr}")
+		# 	print(f"qd={qd}")
+		# 	print(f"ab={ab}")
+		# 	print(f"ad_1={ad_1} ad_2={ad_2} ad={ad} wd={wd}")
+		# 	print(f"at={at}")
 
-		self._integrate_num()
-
-		return self
+		return [[cmd, dur] for cmd, dur in r_lst if 0.0 < dur]

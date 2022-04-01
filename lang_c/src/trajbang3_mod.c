@@ -12,7 +12,7 @@
 
 static int tb3_discrete_(tb3_C * self, double period, double * jrk);
 
-static int tb3_compute_(tb3_C * self);
+static int tb3_STATIC_compute(tb3_C * self);
 static int tb3_integrate_(tb3_C * self);
 
 int tb3_get_qtw(tb3_C * self, double a_from, double a_to, double * q, double * t, double * w) {
@@ -70,7 +70,7 @@ int tb3__new__(tb3_C * self, double jm, double am, double a0, double s0, double 
 	if (are_limits_modified || are_conditions_modified) {
 		tb3__setup__(self, a0, s0, ag, sg);
 
-		tb3_compute_(self);
+		tb3_STATIC_compute(self);
 		tb3_integrate_(self);
 
 		assert( tb3_check(self) );
@@ -79,7 +79,7 @@ int tb3__new__(tb3_C * self, double jm, double am, double a0, double s0, double 
 	return EXIT_SUCCESS;
 }
 
-static int tb3_compute_(tb3_C * self) {
+static int tb3_STATIC_compute(tb3_C * self) {
 
 	double ap = m_BOUND(self->a0, -self->am, self->am);
 
@@ -134,7 +134,7 @@ static int tb3_compute_(tb3_C * self) {
 		printf("ap=%f, ab=%f, at=%f\n", ap, ab, at);
 		printf("de=%f, ad_1=%f, ad_1=%f, ad=%f\n", de, ad_1, ad_2, ad);
 		for (size_t i=0 ; i<8 ; i++) {
-			printf("%f\t%f\n", self->cmd[i], self->dur[i]);
+			printf("%2d.\t%6.3f\t%6.3f\n", i, self->cmd[i], self->dur[i]);
 		}
 	}
 
@@ -236,7 +236,7 @@ int tb3_at_time(tb3_C * self, double t_req, double * s, double * a, double * j) 
 	}
 }
 
-// int _tb3_compute_1(tb3_C * self, double period); {
+// int _tb3_STATIC_compute1(tb3_C * self, double period); {
 // 	// exercice inverse, on accepte de ne pas respecter les limitations, mais en revanche, on cherche à tout faire en 1 step, sans respecter les limites imposées
 
 // 	double qh = period * (self->a0 + self->ag) / 2.0;
@@ -302,6 +302,100 @@ int tb3_jrk(tb3_C * self, double period, double * jrk) {
 	* jrk = c * self->jm / period;
 	// printf("tb3_continuous() -> %f\n", * jrk);
 	return EXIT_SUCCESS;
+
+}
+
+int tb3_time_at_pos(tb3_C * self, double p, double * t) {
+	#ifdef DISABLED_CODE
+		printf(">>> \e[33mtb3_time_at_pos\e[0m(tb3_C<%p>, p=%f)\n", self, p);
+	#endif
+
+	// valid only when the speed it positive or null everywhere, no test is done
+
+	if (p <= self->poly.p[0][3]) {
+		#ifdef DISABLED_CODE
+			fprintf(stderr, "<= :: %.5g < %.5g <= %.5g\n", p, self->poly.p[0][3]);
+		#endif
+		if (self->poly.s[0][2] == 0.0) {
+			* t = self->poly.t[0];
+		} else {
+			* t = self->poly.t[0] - (self->poly.p[0][3] - p) / self->poly.s[0][2];
+		}
+		return EXIT_SUCCESS;
+	}
+	if (self->poly.p[8][3] <= p) {
+		#ifdef DISABLED_CODE
+			fprintf(stderr, "=> :: %.5g < %.5g <= %.5g\n", p, self->poly.p[0][3]);
+		#endif
+		if (self->poly.s[8][2] == 0.0) {
+			* t = self->poly.t[7];
+		} else {
+			* t = self->poly.t[7] + (p - self->poly.p[8][3]) / self->poly.s[8][2];
+		}
+		return EXIT_SUCCESS;
+	}
+
+	double next_p = self->poly.p[8][3];
+
+	for (int i=7 ; 0 <= i ; i--) {
+		double prev_p = self->poly.p[i][3];
+
+		if (p == prev_p) {
+			* t = self->poly.t[i];
+			return EXIT_SUCCESS;
+		}
+
+		#ifdef DISABLED_CODE
+			fprintf(stderr, "%2d :: %.5g < %.5g < %.5g\n", i, prev_p, p, next_p);
+		#endif
+
+		if (prev_p < p && p < next_p) {
+			double a = self->poly.p[i][0];
+			double b = self->poly.p[i][1];
+			double c = self->poly.p[i][2];
+			double d = prev_p - p;
+
+			double complex x_lst[3] = {0};
+
+			tb3_poly_sol q_lst[3] = {0};
+			for (int j=0 ; j < 3 ; j++) {
+				x_lst[j] = NAN;
+				q_lst[j] = tb3_poly_sol_NOT_COMPUTED;
+			}
+
+			if (a == 0.0) {
+				if (b == 0.0) {
+					tb3_STATIC_solve_poly1(c, d, x_lst, q_lst);
+				} else {
+					tb3_STATIC_solve_poly2(b, c, d, x_lst, q_lst);
+				}
+			} else {
+				tb3_STATIC_solve_poly3(a, b, c, d, x_lst, q_lst);
+			}
+
+			// #ifdef DISABLED_CODE
+			// 	for (int j=0 ; j < 3 ; j++) {
+			// 		fprintf(stderr, "x%d = %.5g + %.5gi [%d]\n", j, creal(x_lst[j]), cimag(x_lst[j]), q_lst[j]);
+			// 	}
+			// #endif
+
+			for (int j=0 ; j < 3 ; j++) {
+				if (
+					( q_lst[j] == tb3_poly_sol_REAL || q_lst[j] == tb3_poly_sol_MULTIPLE ) &&
+					0 <= creal(x_lst[j]) && creal(x_lst[j]) <= self->dur[i]
+				) {
+					* t = creal(x_lst[j]) + (self->poly.t[i] - self->dur[i]);
+					#ifdef DISABLED_CODE
+						fprintf(stderr, "<<< %f\n", * t);
+					#endif
+					return EXIT_SUCCESS;
+				}
+			}
+		}
+		next_p = prev_p;
+	}
+
+	return EXIT_FAILURE;
 
 }
 
@@ -391,7 +485,7 @@ int tb3_STATIC_solve_poly2(double a, double b, double c, double complex * x_lst,
 	// solve a x² + b x + c = 0
 
 	// determinant
-	double z = b*b - 4.0*a*c;
+	double z = (b*b) - (4.0*a*c);
 
 	if ( 0.0 <= z ) {
 		double sqrt_z = sqrt(z);
@@ -472,24 +566,35 @@ int tb3_STATIC_solve_poly3(double a, double b, double c, double d, double comple
 	double p = (3.0*a*c - b*b) / (3.0*a*a);
 	double q = (2.0*b*b*b - 9.0*a*b*c + 27.0*a*a*d)/(27.0*a*a*a);
 
-	double complex r = (q*q)/4.0 + (p*p*p)/27.0;
-	double complex m = (-q/2.0) + csqrt(r);
-	double complex z = cpow(m, 1.0/3.0);
+	double r = (q*q)/4.0 + (p*p*p)/27.0;
 
-	double complex cbrt_p = (-1 + I*sqrt(3)) * 0.5;
-	double complex cbrt_n = (-1 - I*sqrt(3)) * 0.5;
+	if (0.0 <= r) {
+		double sqrt_r = sqrt(r);
+		x_lst[0] = cbrt((-q/2.0) + sqrt_r) + cbrt((-q/2.0) - sqrt_r);
+		q_lst[0] = tb3_poly_sol_REAL;
+	} else {
+		double complex m = (-q/2.0) + csqrt(r);
+		double complex z = cpow(m, 1.0/3.0);
 
-	double complex t_lst[3] = {
-		z - p/(3.0*z),
-		z*cbrt_p - p/(3.0*z*cbrt_p),
-		z*cbrt_n - p/(3.0*z*cbrt_n)
-	};
+		double complex cbrt_p = (-1 + I*sqrt(3)) * 0.5;
+		double complex cbrt_n = (-1 - I*sqrt(3)) * 0.5;
 
-	for (size_t i=0 ; i < 3 ; i++) {
-		double complex x = t_lst[i] - e;
-		x_lst[i] = x;
-		q_lst[i] = ( m_IS_CLOSE(cimag(x), 0.0) ) ? (tb3_poly_sol_REAL) : (tb3_poly_sol_COMPLEX);
-		// fprintf(stderr, "x%ld = %.5g + %.5gi [%d]\n", i, creal(x_lst[i]), cimag(x_lst[i]), q_lst[i]);
+		double complex t_lst[3] = {
+			z - p/(3.0*z),
+			z*cbrt_p - p/(3.0*z*cbrt_p),
+			z*cbrt_n - p/(3.0*z*cbrt_n)
+		};
+
+		for (size_t i=0 ; i < 3 ; i++) {
+			double complex x = t_lst[i] - e;
+			x_lst[i] = x;
+			q_lst[i] = ( m_IS_CLOSE(cimag(x), 0.0) ) ? (tb3_poly_sol_REAL) : (tb3_poly_sol_COMPLEX);
+			// #ifdef DISABLED_CODE
+			// 	fprintf(stderr, "x%ld = %.5g + %.5gi [%d]\n", i, creal(x_lst[i]), cimag(x_lst[i]), q_lst[i]);
+			// #endif
+		}
+
+
 	}
 
 	return EXIT_SUCCESS;
@@ -510,6 +615,12 @@ int tb3__print__(tb3_C * self) {
 	}
 	fprintf(stderr, "\n\n");
 
+	fprintf(stderr, "T = \n");
+	for (size_t i=0 ; i<8 ; i++) {
+		fprintf(stderr, "\t%ld. %7.4g\n", i, self->poly.t[i]);
+	}
+
+
 	// fprintf(stderr, "J = \n");
 	for (size_t i=0 ; i<8 ; i++) {
 		// fprintf(stderr, "\t%ld. %6.3g\n", i, self->poly.j[i]);
@@ -525,9 +636,9 @@ int tb3__print__(tb3_C * self) {
 		// fprintf(stderr, "\t%ld. %6.3g t² + %6.3g t + %6.3g\n", i, self->poly.s[i][0], self->poly.s[i][1], self->poly.s[i][2]);
 	}
 
-	// fprintf(stderr, "P :: pf=%.3g\n", self->poly.p[8][3]);
+	fprintf(stderr, "P :: Pf=%.5g m\n", self->poly.p[8][3]);
 	for (size_t i=0 ; i<8 ; i++) {
-		// fprintf(stderr, "\t%ld. %6.3g t³ + %6.3g t² + %6.3g t + %6.3g\n", i, self->poly.p[i][0], self->poly.p[i][1], self->poly.p[i][2], self->poly.p[i][3]);
+		fprintf(stderr, "\t%ld. %6.3g t³ + %6.3g t² + %6.3g t + %6.3g\n", i, self->poly.p[i][0], self->poly.p[i][1], self->poly.p[i][2], self->poly.p[i][3]);
 	}
 
 	return EXIT_SUCCESS;
