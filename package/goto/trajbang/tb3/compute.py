@@ -86,41 +86,6 @@ class Tb3Compute() :
 
 		return A, S, D
 
-	def _integrate_num(self) :
-		""" numerical integration """
-
-		jm, am, a0, s0, ag, sg = self.jm, self.am, self.a0, self.s0, self.ag, self.sg
-		t0, d0 = 0.0, 0.0
-
-		self.poly = { k : list() for k in ['T', 'A', 'S', 'D'] }
-
-		self.poly['T'].append(t0)
-		
-		for i, (cmd, dur) in enumerate(self.sol) :
-			t = dur
-			self.poly['T'].append(self.poly['T'][-1] + t)
-
-			a1 = cmd * jm
-			self.poly['A'].append([a1, a0])
-
-			s2 = a1 / 2.0
-			s1 = a0
-			self.poly['S'].append([s2, s1, s0])
-
-			d3 = s2 / 3.0
-			d2 = s1 / 2.0
-			d1 = s0
-			self.poly['D'].append([d3, d2, d1, d0])
-
-			a0 = a1 * t + a0
-			s0 = s2 * t**2 + s1 * t + s0
-			d0 = d3 * t**3 + d2 * t**2 + d1 * t + d0
-
-		self.poly['A'].append([a0,])
-		self.poly['S'].append([s0,])
-		self.poly['D'].append([d0,])
-
-		return self.poly
 
 	def get_at_time(self, t) :
 		""" return the A, S and D reached at the time passed in argument,
@@ -153,19 +118,52 @@ class Tb3Compute() :
 		jm, am, a0, s0, ag, sg = self.jm, self.am, self.a0, self.s0, self.ag, self.sg
 		return f"TrajBang3(jm={jm}, am={am}, a0={a0}, s0={s0}, ag={ag}, sg={sg})"
 
-	def plot(self, result_dir=None) :
-		jm, am, a0, s0, ag, sg = self.jm, self.am, self.a0, self.s0, self.ag, self.sg
-		cmd, dur, J, A, S, D = self.cmd, self.dur, self.J, self.A, self.S, self.D
+	def plot(self, a0, s0, ag, sg, result_dir=None) :
+		self.debug = True
+		r_comp = self._compute(a0, s0, ag, sg)
+		r_inte = self._integrate(a0, s0, ag, sg, r_comp)
+		self.debug = False
+		print(r_inte)
 
+		t_lst, j_lst, a_lst, s_lst, d_lst = list(), list(), list(), list(), list()
+		for i, (c, d) in enumerate(r_comp) :
+			t = np.linspace(0, d)
+			t_lst.append(t + r_inte['T'][i])
+
+			j_lst.append(np.ones_like(t) * c * self.jm)
+			
+			a1, a0 = self.poly['A'][i]
+			a_lst.append(a1 * t + a0)
+			
+			s2, s1, s0 = self.poly['S'][i]
+			s_lst.append(s2 * t**2 + s1 * t + s0)
+
+			d3, d2, d1, d0 = self.poly['D'][i]
+			d_lst.append(d3 * t**3 + d2 * t**2 + d1 * t + d0)
+			
+		# t_arr = np.hstack(t_lst)
+		# j_arr = np.hstack(j_lst)
+		# a_arr = np.hstack(a_lst)
+		# s_arr = np.hstack(s_lst)
+		# d_arr = np.hstack(d_lst)
+		
 		plt.figure()
 		plt.subplot(4, 1, 1)
-		plt.step(T, J)
+		for t, j in zip(t_lst, j_lst) :
+			plt.step(t, j)
+		plt.ylabel('J')
 		plt.subplot(4, 1, 2)
-		plt.plot(T, A)
+		for t, a in zip(t_lst, a_lst) :
+			plt.plot(t, a)
+		plt.ylabel('A')
 		plt.subplot(4, 1, 3)
-		plt.plot(T, S)
+		for t, s in zip(t_lst, s_lst) :
+			plt.plot(t, s)
+		plt.ylabel('S')
 		plt.subplot(4, 1, 4)
-		plt.plot(T, D)
+		for t, d in zip(t_lst, d_lst) :
+			plt.plot(t, d)
+		plt.ylabel('D')
 		if result_dir is None :
 			plt.show()
 		else :
@@ -230,6 +228,8 @@ class Tb3Compute() :
 		self._compute()
 
 	def _compute(self, a0, s0, ag, sg) :
+		if self.debug :
+			print(f"Tb3Compute._compute(jm={self.jm}, am={self.am}, a0={a0}, s0={s0}, ag={ag}, sg={sg})")
 
 		r_lst = [[0, 0] for i in range(8)]
 
@@ -254,26 +254,101 @@ class Tb3Compute() :
 		de = ab**2 + jm*abs(qd)
 		ad_1 = ( -ab + math.sqrt(de) ) * wd
 		ad_2 = ( -ab - math.sqrt(de) ) * wd
-		ad = ad_1 if 0 <= ad_1 else ad_2
-
+	
+		ad = ad_1 if -1e-3 <= ad_1 else ad_2
+		
 		at = ab + ad*wd
 
 		i = 4 if ( 0 <= qd * wr ) else 0
 		if am < abs(at) :
+			print("\n1",  abs(am*wd - ab)/jm, "\n")
+
 			r_lst[i+1] = [wd, abs(am*wd - ab)/jm]
 			r_lst[i+2] = [0.0, (at**2 - am**2)/(am*jm)]
 			r_lst[i+3] = [-wd, abs(am*wd - ab)/jm]
 		else :
+			print("\n2",  abs(am*wd - ab)/jm, "\n")
 			r_lst[i+1] = [wd, ad / jm]
 			r_lst[i+3] = [-wd, ad / jm]
 
-		# if debug :
-		# 	print(f"ap={ap}")
-		# 	print(f"qi={qi} ti={ti} wi={wi}")
-		# 	print(f"qr={qr} tr={tr} wr={wr}")
-		# 	print(f"qd={qd}")
-		# 	print(f"ab={ab}")
-		# 	print(f"ad_1={ad_1} ad_2={ad_2} ad={ad} wd={wd}")
-		# 	print(f"at={at}")
+		if self.debug :
+			print(f"ap={ap}")
+			print(f"qi={qi} ti={ti} wi={wi} (a0 -> ap)")
+			print(f"qr={qr} tr={tr} wr={wr} (ap -> ag)")
+			print(f"qd={qd}")
+			print(f"ab={ab}")
+			print(f"ad_1={ad_1} ad_2={ad_2} => ad={ad} wd={wd}")
+			print(f"at={at}")
+			print([w for w, d in r_lst])
+			print([d for w, d in r_lst])
 
 		return [[cmd, dur] for cmd, dur in r_lst if 0.0 < dur]
+
+	def _integrate(self, a0, s0, ag, sg, r_lst) :
+		""" numerical integration """
+
+		jm, am = self.jm, self.am
+		t0, d0 = 0.0, 0.0
+
+		p_map = { k : list() for k in ['T', 'A', 'S', 'D'] }
+
+		p_map['T'].append(t0)
+
+		print(type(r_lst))
+		
+		for i, (cmd, dur) in enumerate(r_lst) :
+			t = dur
+			p_map['T'].append(p_map['T'][-1] + t)
+
+			a1 = cmd * jm
+			p_map['A'].append([a1, a0])
+
+			s2 = a1 / 2.0
+			s1 = a0
+			p_map['S'].append([s2, s1, s0])
+
+			d3 = s2 / 3.0
+			d2 = s1 / 2.0
+			d1 = s0
+			p_map['D'].append([d3, d2, d1, d0])
+
+			a0 = a1 * t + a0
+			s0 = s2 * t**2 + s1 * t + s0
+			d0 = d3 * t**3 + d2 * t**2 + d1 * t + d0
+
+		p_map['A'].append([a0,])
+		p_map['S'].append([s0,])
+		p_map['D'].append([d0,])
+
+		self.poly = p_map
+
+		if self.debug :
+			for i, (cmd, dur) in enumerate(r_lst) :
+				a1, a0 = self.poly['A'][i]
+				print(f"A[{i}] = {a1} t + {a0}")
+
+		return p_map
+
+if __name__ == "__main__" :
+
+	u = Tb3Compute(1.0/3.0, 4.0/3.0)
+	a0, s0, ag, sg = -0.03333328837510861, 69.99833333558125, -0.06666666666666667, 69.99333333333334
+	a0, s0, ag, sg = -0.03333328837510861, 0.99833333558125, -0.06666666666666667, 0.99333333333334
+	# a0, s0, ag, sg = 0.0, 0.0, 0.0, 10.0
+	#r_lst = u._compute(a0, s0, ag, sg)
+	#p_map = u._integrate(a0, s0, ag, sg, r_lst)
+	#print(p_map)
+
+	period = 0.1
+
+	j0 = (( -(ag + (3.0 * a0)) * period ) + 2.0 * (sg - s0)) / (2.0 * period**2)
+	j1 = (( ((3.0 * ag) + a0) * period ) - 2.0 * (sg - s0)) / (2.0 * period**2)
+
+	a1 = a0 + j0 * period
+
+	print("j0", j0)
+	print("j1", j1)
+	print("a0", a0)
+
+
+	# u.plot(a0, s0, ag, sg)
