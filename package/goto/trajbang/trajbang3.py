@@ -133,13 +133,12 @@ class TrajBang3() :
 		t_stop = self.poly['T'][-1]
 		# print(f'start[{t_start}] <= {t} < stop[{t_stop}]')
 		if t < t_start :
-			return (self.a0, self.s0, 0.0)
+			return (0.0, self.a0, self.s0, 0.0)
 		if t_stop <= t :
-			return (self.poly['A'][-1][-1], self.poly['S'][-1][-1], self.poly['D'][-1][-1])
+			return (0.0, self.poly['A'][-1][-1], self.poly['S'][-1][-1], self.poly['D'][-1][-1])
 		for i in range(len(self.sol)) :
 			t_before = self.poly['T'][i]
 			t_after = self.poly['T'][i+1]
-			# print(f'  {i}. before[{t_before}] < {t} <= after[{t_after}]')
 			if t_before <= t < t_after :
 				t = t - t_before
 				a1, a0 = self.poly['A'][i]
@@ -159,21 +158,46 @@ class TrajBang3() :
 
 	def plot(self, result_dir=None) :
 		jm, am, a0, s0, ag, sg = self.jm, self.am, self.a0, self.s0, self.ag, self.sg
-		cmd, dur, T, J, A, S, D = self.cmd, self.dur, self.T, self.J, self.A, self.S, self.D
 
 		plt.figure()
-		plt.subplot(4, 1, 1)
-		plt.step(T, J)
-		plt.subplot(4, 1, 2)
-		plt.plot(T, A)
-		plt.subplot(4, 1, 3)
-		plt.plot(T, S)
-		plt.subplot(4, 1, 4)
-		plt.plot(T, D)
-		if result_dir is None :
-			plt.show()
-		else :
-			plt.savefig(result_dir / f"{self.title}.png")
+
+		for t_start, t_stop in zip(self.poly['T'][:-1], self.poly['T'][1:]) :
+			t_lst = np.linspace(t_start, t_stop)
+
+			j_lst = list()
+			a_lst = list()
+			s_lst = list()
+			d_lst = list()
+
+			for t in t_lst :
+				j, a, s, d = self.get_at_time(t)
+				j_lst.append(j)
+				a_lst.append(a)
+				s_lst.append(s)
+				d_lst.append(d)
+
+			plt.subplot(4, 1, 1)
+			plt.step(t_lst, j_lst)
+			plt.subplot(4, 1, 2)
+			plt.plot(t_lst, a_lst)
+			plt.subplot(4, 1, 3)
+			plt.plot(t_lst, s_lst)
+			plt.subplot(4, 1, 4)
+			plt.plot(t_lst, d_lst)
+		
+		plt.show()
+
+		# t_lst = np.concatenate(
+		# 	[np.linspace(-1.0, 0.0),] +
+		# 	[ for t_start, t_stop in zip(self.poly['T'][:-1], self.poly['T'][1:])] +
+		# 	[np.linspace(self.poly['T'][-1], self.poly['T'][-1] + 1.0),]
+		# )
+
+
+		# if result_dir is None :
+		# 	plt.show()
+		# else :
+		# 	plt.savefig(result_dir / f"{self.title}.png")
 
 	def status(self) :
 		jm, am, a0, s0, ag, sg = self.jm, self.am, self.a0, self.s0, self.ag, self.sg
@@ -284,7 +308,7 @@ class TrajBang3() :
 
 		self.sol = list()
 		for cmd, dur in res :
-			print(f"{cmd}\t{dur}")
+			# print(f"{cmd}\t{dur}")
 			if dur > 0.0 :
 				self.sol.append([cmd * self.jm, dur])
 
