@@ -51,6 +51,7 @@ int tb3_jrk(tb3_C * self, double period, double * jrk);
 
 int tb3_spd_at_pos(tb3_C * self, double p, double * s);
 int tb3_at_time(tb3_C * self, double t_req, double * s, double * a, double * j);
+int tb3_time_at_pos(tb3_C * self, double p, double * t);
 
 int tb3_STATIC_solve_poly1(double a, double b, double complex * x_lst, tb3_poly_sol * q_lst);
 int tb3_STATIC_solve_poly2(double a, double b, double c, double complex * x_lst, tb3_poly_sol * q_lst);
@@ -63,6 +64,8 @@ int tb3__print__(tb3_C * self);
 
 #define m_tb3_spd_at_pos(pos, tb3_obj, spd) ( tb3_spd_at_pos((tb3_C *)(& (tb3_obj)), pos, & spd) )
 #define m_tb3_at_time(t, tb3_obj, spd, acc, jrk) ( tb3_at_time((tb3_C *)(& (tb3_obj)), t, & spd, & acc, & jrk) )
+
+#define m_tb3_time_at_pos(p, tb3_self, t) ( tb3_time_at_pos((tb3_C *)(& (tb3_self)), (p), (& (t))) ) 
 
 #define m_tb3_jrk(period, tb3_self, jrk) ( tb3_jrk((tb3_C *)(& tb3_self), period, & jrk) )
 
