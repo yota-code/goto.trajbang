@@ -117,7 +117,7 @@ if __name__ =='__main__' :
 
 	jm = math.radians(psiddot_max)
 	am = math.radians(psidot_max)
-	period = 0.1
+	period = 0.01
 
 	print(f"am={am} jm={jm}")
 
@@ -159,7 +159,7 @@ if __name__ =='__main__' :
 		#d = pcl.hsv_to_rgb((((c.hue / math.tau) + 1.0) % 1.0, c.saturation, c.value))
 		p = np.array( sorted(res_map[k]) )
 
-		axe.scatter(p[:,0], p[:,1], p[:,2], '.', color=d, alpha=0.9 if k == -1.0 else 1.0)
+		axe.scatter(p[:,0], p[:,1], p[:,2], '.', color=d, alpha=0.01 if k == -1.0 else 1.0)
 
 	t_arr, a_arr, s_arr, x_arr, y_arr = navigate(m_arr, 1852 * spd_kt / 3600, jm, am, period)
 
@@ -168,6 +168,7 @@ if __name__ =='__main__' :
 	axe.set_xlabel("dist")
 	axe.set_ylabel("angle")
 	axe.set_zlabel("rate")
+	plt.savefig("psi.png")
 	plt.show()
 	
 	sys.exit(0)
