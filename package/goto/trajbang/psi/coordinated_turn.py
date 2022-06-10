@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 
 from cc_pathlib import Path
 
-
 class CoordinatedTurn() :
 
 	g = 9.807

@@ -55,6 +55,9 @@ def hsv_planar_interpolation(a:hsv_tpl, b:hsv_tpl, z:float) :
 	return hsv_tpl(hue, saturation, value)
 
 
+
+
+
 def integrate(cmd, jm, am, period) :
 	a_lst = [0.0,]
 	s_lst = [0.0,]
@@ -117,7 +120,7 @@ if __name__ =='__main__' :
 
 	jm = math.radians(psiddot_max)
 	am = math.radians(psidot_max)
-	period = 0.01
+	period = 0.1
 
 	print(f"am={am} jm={jm}")
 
@@ -159,7 +162,7 @@ if __name__ =='__main__' :
 		#d = pcl.hsv_to_rgb((((c.hue / math.tau) + 1.0) % 1.0, c.saturation, c.value))
 		p = np.array( sorted(res_map[k]) )
 
-		axe.scatter(p[:,0], p[:,1], p[:,2], '.', color=d, alpha=0.01 if k == -1.0 else 1.0)
+		axe.scatter(p[:,0], p[:,1], p[:,2], '.', color=d, alpha=0.1 if k == -1.0 else 1.0)
 
 	t_arr, a_arr, s_arr, x_arr, y_arr = navigate(m_arr, 1852 * spd_kt / 3600, jm, am, period)
 
