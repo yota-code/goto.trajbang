@@ -227,7 +227,7 @@ class Tb3Compute() :
 		self._prepare(a0, s0, ag, sg)
 		self._compute()
 
-	def _compute(self, a0, s0, ag, sg) :
+	def _compute(self, a0, s0, ag, sg, period=None) :
 		if self.debug :
 			print(f"Tb3Compute._compute(jm={self.jm}, am={self.am}, a0={a0}, s0={s0}, ag={ag}, sg={sg})")
 
@@ -254,15 +254,25 @@ class Tb3Compute() :
 		de = ab**2 + jm*abs(qd)
 		ad_1 = ( -ab + math.sqrt(de) ) * wd
 		ad_2 = ( -ab - math.sqrt(de) ) * wd
-	
-		ad = ad_1 if -1e-3 <= ad_1 else ad_2
 		
+		period = None
+		period = 0.02
+
+		ad = 0.0
+		if (ad_1 < 0.0) and (abs(ad_1) < abs(ad_2)) and (abs(ad_1) < 0.04) :
+			ad = ad_1
+		if (ad_2 < 0.0) and (abs(ad_2) < abs(ad_1)) and (abs(ad_2) < 0.04) :
+			ad = ad_2
+		if ad == 0.0 :
+			ad = ad_1 if 0.0 <= ad_1 else ad_2
+
+		ad = ad_1 if ab >= 0 else ad_1
+			
 		at = ab + ad*wd
 
 		i = 4 if ( 0 <= qd * wr ) else 0
 		if am < abs(at) :
 			print("\n1",  abs(am*wd - ab)/jm, "\n")
-
 			r_lst[i+1] = [wd, abs(am*wd - ab)/jm]
 			r_lst[i+2] = [0.0, (at**2 - am**2)/(am*jm)]
 			r_lst[i+3] = [-wd, abs(am*wd - ab)/jm]
@@ -281,6 +291,68 @@ class Tb3Compute() :
 			print(f"at={at}")
 			print([w for w, d in r_lst])
 			print([d for w, d in r_lst])
+			print("----------------")
+		# print("\n===============\n")
+
+		return [[cmd, dur] for cmd, dur in r_lst if 0.0 < dur]
+
+	def _compute_test(self, a0, s0, ag, sg, period=None) :
+		print("TESTTESTESTEST")
+
+		if self.debug :
+			print(f"Tb3Compute._compute(jm={self.jm}, am={self.am}, a0={a0}, s0={s0}, ag={ag}, sg={sg})")
+
+		r_lst = [[0, 0] for i in range(8)]
+
+		jm, am = self.jm, self.am
+
+		# computation of the initial segment, from A0 to Ap the closest of either Am or -Am
+		ap = max(-am, min(a0, am))
+		qi, ti, wi = self.get_q(a0, ap)
+		r_lst[0] = [wi, ti]
+
+		#computation of the final segment, from Ap to Ag
+		qr, tr, wr = self.get_q(ap, ag)
+		r_lst[4] = [wr, tr]
+
+		# computation of Qd the remaining part to go from S0 to Sg without the initial and final segments
+		qd = sg - s0 - qi - qr
+		ab = ag if ( 0 <= qd * wr ) else ap
+
+		# if Qd != 0.0 we need to compute the remaining command
+		wd = math.copysign(1.0, qd)
+
+		de = ab**2 + jm*abs(qd)
+		ad_1 = ( -ab + math.sqrt(de) ) * wd
+		ad_2 = ( -ab - math.sqrt(de) ) * wd
+		
+		for ad in [ad_1, ad_2] :
+
+			at = ab + ad*wd
+
+			i = 4 if ( 0 <= qd * wr ) else 0
+			if am < abs(at) :
+				print("\n1",  abs(am*wd - ab)/jm, "\n")
+				r_lst[i+1] = [wd, abs(am*wd - ab)/jm]
+				r_lst[i+2] = [0.0, (at**2 - am**2)/(am*jm)]
+				r_lst[i+3] = [-wd, abs(am*wd - ab)/jm]
+			else :
+				print("\n2",  abs(am*wd - ab)/jm, "\n")
+				r_lst[i+1] = [wd, ad / jm]
+				r_lst[i+3] = [-wd, ad / jm]
+
+			if self.debug :
+				print(f"ap={ap}")
+				print(f"qi={qi} ti={ti} wi={wi} (a0 -> ap)")
+				print(f"qr={qr} tr={tr} wr={wr} (ap -> ag)")
+				print(f"qd={qd}")
+				print(f"ab={ab}")
+				print(f"ad_1={ad_1} ad_2={ad_2} => ad={ad} wd={wd}")
+				print(f"at={at}")
+				print([w for w, d in r_lst])
+				print([d for w, d in r_lst])
+				print("----------------")
+			# print("\n===============\n")
 
 		return [[cmd, dur] for cmd, dur in r_lst if 0.0 < dur]
 

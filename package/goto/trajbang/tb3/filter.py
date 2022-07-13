@@ -23,20 +23,32 @@ class Tb3Filter() :
 
 		self.a0, self.s0 = a1, s1
 
-		return s1, a1, j
+		# if j == -1.0 :
+		# 	print("\x1b[35mRAAAAH\x1b[0m")
+		# 	self.obj.debug = True
+		# 	self.obj._compute_test(self.a0, self.s0, self.ag, self.sg, self.period)
+		# 	raise ValueError
+
+		return j, a1, s1
 
 	def _jerk(self) :
 		# j0 = (( -(self.ag + (3.0 * self.a0)) * self.period ) + 2.0 * (self.sg - self.s0)) / (2.0 * self.period**2)
 		epsilon = 1e-6
 
 		# a 1 step solution
+		# j0 = (self.ag - self.a0) / self.period
+		# s1 = self.period * (self.ag + self.a0) / 2.0 + self.s0
+
+		a1 = -self.a0 + 2*(self.sg - self.s0) / self.period
 		j0 = (self.ag - self.a0) / self.period
-		s1 = self.period * (self.ag + self.a0) / 2.0 + self.s0
 
 		print("=== ", self.a0, self.s0, self.ag, self.sg)
 
-		print("quick ?", j0, s1, self.sg)
-		if abs(s1 - self.sg) < epsilon :
+		print(f"quick ? j0={j0} a1={a1}")
+		if (
+			( -(self.obj.am + epsilon) <= a1 <= (self.obj.am + epsilon) ) and
+			( -(self.obj.jm + epsilon) <= j0 <= (self.obj.jm + epsilon) ) 
+		) :
 			print("quick !")
 			return j0
 
@@ -44,11 +56,18 @@ class Tb3Filter() :
 		j0 = (( -(self.ag + (3.0 * self.a0)) * self.period ) + 2.0 * (self.sg - self.s0)) / (2.0 * self.period**2)
 		j1 = (( ((3.0 * self.ag) + self.a0) * self.period ) - 2.0 * (self.sg - self.s0)) / (2.0 * self.period**2)
 		a1 = j0 * self.period + self.a0
+		a2 = j1 * self.period + a1
 
-		print(f"!!! a={self.a0} -> {self.ag}\n    s={self.s0} -> {self.sg}\n    {j0}, {j1}, {a1}")
+		#print(f"!!! a={self.a0} -> {self.ag}\n    s={self.s0} -> {self.sg}\n    {j0}, {j1}, {a1}")
 
-		if ( -self.obj.jm - epsilon <= j0 <= self.obj.jm + epsilon) and ( -self.obj.jm - epsilon <= j1 <= self.obj.jm + epsilon ) and ( -self.obj.am - epsilon <= a1 <= self.obj.am + epsilon ) :
-			print("express", j0, j1, a0)
+		print(f"express ? j0={j0} j1={j1} a1={a1} a2={a2}")
+		if (
+			( -(self.obj.jm + epsilon) <= j0 <= (self.obj.jm + epsilon) ) and
+			( -(self.obj.jm + epsilon) <= j1 <= (self.obj.jm + epsilon) ) and
+			( -(self.obj.am + epsilon) <= a1 <= (self.obj.am + epsilon) ) and
+			( -(self.obj.am + epsilon) <= a2 <= (self.obj.am + epsilon) )
+		):
+			print("express !", j0, j1, self.a0)
 			return j0
 
 		r_lst = self.obj._compute(self.a0, self.s0, self.ag, self.sg)

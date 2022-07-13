@@ -15,7 +15,6 @@ from coordinated_turn import CoordinatedTurn
 
 spd_kt = 100.0
 
-
 phi_lim = 20.0
 phidot_lim = 10.0
 psidot_lim = 8.0
@@ -120,7 +119,7 @@ if __name__ =='__main__' :
 
 	jm = math.radians(psiddot_max)
 	am = math.radians(psidot_max)
-	period = 0.1
+	period = 0.01
 
 	print(f"am={am} jm={jm}")
 
