@@ -60,9 +60,8 @@ class Tb3Compute() :
 	def check_is_close(self, a, b) :
 		return abs(a - b) <= self.check_tolerance
 
-	@property
 	def duration(self) :
-		return sum(dur for cmd, dur in self.sol)
+		return sum(dur for cmd, dur in self.res)
 
 	@property
 	def val(self) :
@@ -86,27 +85,26 @@ class Tb3Compute() :
 
 		return A, S, D
 
-
 	def get_at_time(self, t) :
 		""" return the A, S and D reached at the time passed in argument,
 		outside the bounds, boundary values are returned
 		 """
-		t_start = self.poly['T'][0]
-		t_stop = self.poly['T'][-1]
+		t_start = self.pol['T'][0]
+		t_stop = self.pol['T'][-1]
 		# print(f'start[{t_start}] <= {t} < stop[{t_stop}]')
 		if t < t_start :
 			return (self.a0, self.s0, 0.0)
 		if t_stop <= t :
-			return (self.poly['A'][-1][-1], self.poly['S'][-1][-1], self.poly['D'][-1][-1])
-		for i in range(len(self.sol)) :
-			t_before = self.poly['T'][i]
-			t_after = self.poly['T'][i+1]
+			return (self.pol['A'][-1][-1], self.pol['S'][-1][-1], self.pol['D'][-1][-1])
+		for i in range(len(self.res)) :
+			t_before = self.pol['T'][i]
+			t_after = self.pol['T'][i+1]
 			# print(f'  {i}. before[{t_before}] < {t} <= after[{t_after}]')
 			if t_before <= t < t_after :
 				t = t - t_before
-				a1, a0 = self.poly['A'][i]
-				s2, s1, s0 = self.poly['S'][i]
-				d3, d2, d1, d0 = self.poly['D'][i]
+				a1, a0 = self.pol['A'][i]
+				s2, s1, s0 = self.pol['S'][i]
+				d3, d2, d1, d0 = self.pol['D'][i]
 				return (
 					a1 * t + a0,
 					s2 * t**2 + s1 * t + s0,
@@ -132,13 +130,13 @@ class Tb3Compute() :
 
 			j_lst.append(np.ones_like(t) * c * self.jm)
 			
-			a1, a0 = self.poly['A'][i]
+			a1, a0 = self.pol['A'][i]
 			a_lst.append(a1 * t + a0)
 			
-			s2, s1, s0 = self.poly['S'][i]
+			s2, s1, s0 = self.pol['S'][i]
 			s_lst.append(s2 * t**2 + s1 * t + s0)
 
-			d3, d2, d1, d0 = self.poly['D'][i]
+			d3, d2, d1, d0 = self.pol['D'][i]
 			d_lst.append(d3 * t**3 + d2 * t**2 + d1 * t + d0)
 			
 		# t_arr = np.hstack(t_lst)
@@ -172,8 +170,8 @@ class Tb3Compute() :
 	def status(self) :
 		jm, am, a0, s0, ag, sg = self.jm, self.am, self.a0, self.s0, self.ag, self.sg
 
-		print("cmd :", ' '.join(f"{cmd:7.3g}" for cmd, dur in self.sol))
-		print("dur :", ' '.join(f"{dur:7.3g}" for cmd, dur in self.sol))
+		print("cmd :", ' '.join(f"{cmd:7.3g}" for cmd, dur in self.res))
+		print("dur :", ' '.join(f"{dur:7.3g}" for cmd, dur in self.res))
 		# print("-" * 4)
 		# print("  T :", ' '.join(f"{i:7.3g}" for i in ([0.0,] + list(itertools.accumulate(T)))))
 		# print("  A :", ' '.join(f"{i:7.3g}" for i in A + [ag,]))
@@ -226,14 +224,18 @@ class Tb3Compute() :
 	def run(self, a0, s0, ag, sg) :
 		self._prepare(a0, s0, ag, sg)
 		self._compute()
+		self._integrate()
 
-	def _compute(self, a0, s0, ag, sg, period=None) :
+	def _compute(self, period=None) :
+
+		a0, s0, ag, sg = self.a0, self.s0, self.ag, self.sg
+		jm, am = self.jm, self.am
+
 		if self.debug :
-			print(f"Tb3Compute._compute(jm={self.jm}, am={self.am}, a0={a0}, s0={s0}, ag={ag}, sg={sg})")
+			print(f"Tb3Compute._compute(jm={jm}, am={am}, a0={a0}, s0={s0}, ag={ag}, sg={sg})")
 
 		r_lst = [[0, 0] for i in range(8)]
 
-		jm, am = self.jm, self.am
 
 		# computation of the initial segment, from A0 to Ap the closest of either Am or -Am
 		ap = max(-am, min(a0, am))
@@ -294,7 +296,9 @@ class Tb3Compute() :
 			print("----------------")
 		# print("\n===============\n")
 
-		return [[cmd, dur] for cmd, dur in r_lst if 0.0 < dur]
+		self.res = [[cmd, dur] for cmd, dur in r_lst if 0.0 < dur]
+
+		return self.res
 
 	def _compute_test(self, a0, s0, ag, sg, period=None) :
 		print("TESTTESTESTEST")
@@ -356,19 +360,19 @@ class Tb3Compute() :
 
 		return [[cmd, dur] for cmd, dur in r_lst if 0.0 < dur]
 
-	def _integrate(self, a0, s0, ag, sg, r_lst) :
+	def _integrate(self) :
 		""" numerical integration """
 
+		a0, s0, ag, sg = self.a0, self.s0, self.ag, self.sg
 		jm, am = self.jm, self.am
+
 		t0, d0 = 0.0, 0.0
 
 		p_map = { k : list() for k in ['T', 'A', 'S', 'D'] }
 
 		p_map['T'].append(t0)
-
-		print(type(r_lst))
 		
-		for i, (cmd, dur) in enumerate(r_lst) :
+		for i, (cmd, dur) in enumerate(self.res) :
 			t = dur
 			p_map['T'].append(p_map['T'][-1] + t)
 
@@ -392,12 +396,12 @@ class Tb3Compute() :
 		p_map['S'].append([s0,])
 		p_map['D'].append([d0,])
 
-		self.poly = p_map
-
 		if self.debug :
-			for i, (cmd, dur) in enumerate(r_lst) :
-				a1, a0 = self.poly['A'][i]
+			for i, (cmd, dur) in enumerate(self.res) :
+				a1, a0 = self.pol['A'][i]
 				print(f"A[{i}] = {a1} t + {a0}")
+
+		self.pol = p_map
 
 		return p_map
 
